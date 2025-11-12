@@ -343,6 +343,21 @@ TEXTS = {
         'boss_ban_session_error': "❌ Ошибка: ID пользователя не найден в сессии. Начните заново.",
         'boss_ban_success': "🚫 Пользователь @{target_username} (ID: {target_id}) **забанен**. Все его активные задачи отменены.",
         'boss_unban_success': "✅ Пользователь @{target_username} (ID: {target_id}) **разбанен**.",
+
+
+        'task_activated_title': "✅ Задача #{task_id} успешно активирована!",
+        'task_activated_jobs_count': "Создано публикаций: {job_count}",
+        'task_activated_schedule_info': "Публикации будут выполнены согласно расписанию",
+        'task_advertiser_notify': "📢 Вас указали рекламодателем в задаче \"{task_name}\". Вы будете получать уведомления о публикациях.",
+
+        'payment_success_template': "✅ Оплата прошла успешно!\n\nТариф **{tariff_name}** активирован.",
+        'error_notify_user': "❌ Не удалось уведомить пользователя {user_id} о добавлении канала. Возможно, бот заблокирован.",
+        'error_invoice_creation': "❌ Не удалось создать счет на оплату. Попробуйте позже.",
+        'error_tariff_not_found': "❌ Ошибка: Тариф не найден.",
+        'error_tariff_cannot_buy': "❌ Этот тариф нельзя купить.",
+        'invoice_title_template': "Оплата тарифа '{tariff_name}'",
+        'invoice_description_template': "Доступ к лимитам: {tasks} задач, {time_slots} T, {date_slots} D",
+        'precheckout_error': "Что-то пошло не так...",
     },
     'en': {
         'welcome_lang': """🤖 Welcome to XSponsorBot!
@@ -559,6 +574,20 @@ Let's get started! Please select your language:""",
         'boss_ban_session_error': "❌ Error: User ID not found in session. Please start over.",
         'boss_ban_success': "🚫 User @{target_username} (ID: {target_id}) has been **banned**. All their active tasks have been cancelled.",
         'boss_unban_success': "✅ User @{target_username} (ID: {target_id}) has been **unbanned**.",
+
+        'task_activated_title': "✅ Task #{task_id} successfully activated!",
+        'task_activated_jobs_count': "Publications created: {job_count}",
+        'task_activated_schedule_info': "Publications will be executed according to the schedule",
+        'task_advertiser_notify': "📢 You have been set as the advertiser for the task \"{task_name}\". You will receive publication notifications.",
+
+        'payment_success_template': "✅ Payment was successful!\n\nTariff **{tariff_name}** activated.",
+        'error_notify_user': "❌ Failed to notify user {user_id} about channel addition. The bot might be blocked.",
+        'error_invoice_creation': "❌ Failed to create an invoice for payment. Try again later.",
+        'error_tariff_not_found': "❌ Error: Tariff not found.",
+        'error_tariff_cannot_buy': "❌ This tariff cannot be purchased.",
+        'invoice_title_template': "Payment for tariff '{tariff_name}'",
+        'invoice_description_template': "Access to limits: {tasks} tasks, {time_slots} T, {date_slots} D",
+        'precheckout_error': "Something went wrong...",
     },
     'es': {
         # ... (existing Spanish localizations) ...
@@ -776,6 +805,20 @@ Mi objetivo es hacer que tu colaboración con los anunciantes sea lo más eficie
         'boss_ban_session_error': "❌ Error: ID de usuario no encontrado en la sesión. Por favor, empieza de nuevo.",
         'boss_ban_success': "🚫 El usuario @{target_username} (ID: {target_id}) ha sido **bloqueado**. Todas sus tareas activas han sido canceladas.",
         'boss_unban_success': "✅ El usuario @{target_username} (ID: {target_id}) ha sido **desbloqueado**.",
+
+        'task_activated_title': "✅ Tarea #{task_id} activada con éxito!",
+        'task_activated_jobs_count': "Publicaciones creadas: {job_count}",
+        'task_activated_schedule_info': "Las publicaciones se ejecutarán según el horario",
+        'task_advertiser_notify': "📢 Has sido designado como anunciante de la tarea \"{task_name}\". Recibirás notificaciones de publicación.",
+
+        'payment_success_template': "✅ El pago fue exitoso!\n\nTarifa **{tariff_name}** activada.",
+        'error_notify_user': "❌ No se pudo notificar al usuario {user_id} sobre la adición del canal. El bot podría estar bloqueado.",
+        'error_invoice_creation': "❌ No se pudo crear una factura para el pago. Inténtalo de nuevo más tarde.",
+        'error_tariff_not_found': "❌ Error: Tarifa no encontrada.",
+        'error_tariff_cannot_buy': "❌ Esta tarifa no se puede comprar.",
+        'invoice_title_template': "Pago de la tarifa '{tariff_name}'",
+        'invoice_description_template': "Acceso a límites: {tasks} tareas, {time_slots} T, {date_slots} D",
+        'precheckout_error': "Algo salió mal...",
     },
     'fr': {
         # ... (existing French localizations) ...
@@ -993,6 +1036,20 @@ Commençons! Veuillez sélectionner votre langue:""",
         'boss_ban_session_error': "❌ Erreur: ID utilisateur introuvable dans la session. Veuillez recommencer.",
         'boss_ban_success': "🚫 L'utilisateur @{target_username} (ID: {target_id}) a été **banni**. Toutes ses tâches actives ont été annulées.",
         'boss_unban_success': "✅ L'utilisateur @{target_username} (ID: {target_id}) a été **débanni**.",
+
+        'task_activated_title': "✅ Tâche #{task_id} activée avec succès !",
+        'task_activated_jobs_count': "Publications créées : {job_count}",
+        'task_activated_schedule_info': "Les publications seront exécutées selon le calendrier",
+        'task_advertiser_notify': "📢 Vous avez été désigné comme annonceur pour la tâche \"{task_name}\". Vous recevrez des notifications de publication.",
+
+        'payment_success_template': "✅ Le paiement a été effectué avec succès !\n\nL'abonnement **{tariff_name}** est activé.",
+        'error_notify_user': "❌ Échec de la notification de l'utilisateur {user_id} concernant l'ajout du canal. Le bot pourrait être bloqué.",
+        'error_invoice_creation': "❌ Échec de la création d'une facture pour le paiement. Veuillez réessayer plus tard.",
+        'error_tariff_not_found': "❌ Erreur : Abonnement non trouvé.",
+        'error_tariff_cannot_buy': "❌ Cet abonnement ne peut pas être acheté.",
+        'invoice_title_template': "Paiement de l'abonnement '{tariff_name}'",
+        'invoice_description_template': "Accès aux limites : {tasks} tâches, {time_slots} T, {date_slots} D",
+        'precheckout_error': "Quelque chose s'est mal passé...",
     },
     'ua': {
         # ... (existing Ukrainian localizations) ...
@@ -1210,6 +1267,20 @@ Commençons! Veuillez sélectionner votre langue:""",
         'boss_ban_session_error': "❌ Помилка: ID користувача не знайдено у сесії. Почніть спочатку.",
         'boss_ban_success': "🚫 Користувача @{target_username} (ID: {target_id}) **заблоковано**. Усі його активні завдання скасовано.",
         'boss_unban_success': "✅ Користувача @{target_username} (ID: {target_id}) **розблоковано**.",
+
+        'task_activated_title': "✅ Завдання #{task_id} успішно активовано!",
+        'task_activated_jobs_count': "Створено публікацій: {job_count}",
+        'task_activated_schedule_info': "Публікації будуть виконані згідно з розкладом",
+        'task_advertiser_notify': "📢 Вас вказано рекламодавцем у завданні \"{task_name}\". Ви будете отримувати сповіщення про публікації.",
+
+        'payment_success_template': "✅ Оплата пройшла успішно!\n\nТариф **{tariff_name}** активовано.",
+        'error_notify_user': "❌ Не вдалося сповістити користувача {user_id} про додавання каналу. Можливо, бот заблоковано.",
+        'error_invoice_creation': "❌ Не вдалося створити рахунок на оплату. Спробуйте пізніше.",
+        'error_tariff_not_found': "❌ Помилка: Тариф не знайдено.",
+        'error_tariff_cannot_buy': "❌ Цей тариф не можна купити.",
+        'invoice_title_template': "Оплата тарифу '{tariff_name}'",
+        'invoice_description_template': "Доступ до лімітів: {tasks} завдань, {time_slots} T, {date_slots} D",
+        'precheckout_error': "Щось пішло не так...",
     },
     'de': {
         # ... (existing German localizations) ...
@@ -1427,6 +1498,20 @@ Lassen Sie uns beginnen! Bitte wählen Sie Ihre Sprache:""",
         'boss_ban_session_error': "❌ Fehler: Benutzer-ID nicht in der Sitzung gefunden. Bitte beginnen Sie von vorne.",
         'boss_ban_success': "🚫 Benutzer @{target_username} (ID: {target_id}) wurde **gesperrt**. Alle seine aktiven Aufgaben wurden storniert.",
         'boss_unban_success': "✅ Benutzer @{target_username} (ID: {target_id}) wurde **entsperrt**.",
+
+        'task_activated_title': "✅ Aufgabe #{task_id} erfolgreich aktiviert!",
+        'task_activated_jobs_count': "Erstellte Veröffentlichungen: {job_count}",
+        'task_activated_schedule_info': "Veröffentlichungen werden gemäß dem Zeitplan ausgeführt",
+        'task_advertiser_notify': "📢 Sie wurden als Werbetreibender für die Aufgabe „{task_name}“ festgelegt. Sie erhalten Benachrichtigungen über Veröffentlichungen.",
+
+        'payment_success_template': "✅ Zahlung war erfolgreich!\n\nDer Tarif **{tariff_name}** ist aktiviert.",
+        'error_notify_user': "❌ Benachrichtigung des Benutzers {user_id} über die Kanalerstellung fehlgeschlagen. Der Bot ist möglicherweise blockiert.",
+        'error_invoice_creation': "❌ Rechnungserstellung für die Zahlung fehlgeschlagen. Bitte versuchen Sie es später erneut.",
+        'error_tariff_not_found': "❌ Fehler: Tarif nicht gefunden.",
+        'error_tariff_cannot_buy': "❌ Dieser Tarif kann nicht gekauft werden.",
+        'invoice_title_template': "Zahlung für Tarif '{tariff_name}'",
+        'invoice_description_template': "Zugriff auf Limits: {tasks} Aufgaben, {time_slots} T, {date_slots} D",
+        'precheckout_error': "Etwas ist schiefgelaufen...",
     }
 }
 
@@ -2115,9 +2200,9 @@ def channels_selection_keyboard(context: ContextTypes.DEFAULT_TYPE, selected_cha
         ])
 
     keyboard.append([
-        InlineKeyboardButton("⬅️ Назад", callback_data="task_back_to_constructor"),
-        InlineKeyboardButton("🏠 Главное меню", callback_data="nav_main_menu")
-    ])
+        InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor"),
+        InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu") ]
+    )
 
     return InlineKeyboardMarkup(keyboard)
 
@@ -2164,9 +2249,9 @@ def calendar_keyboard(context: ContextTypes.DEFAULT_TYPE, year: int, month: int,
     ])
 
     keyboard.append([
-        InlineKeyboardButton("⬅️ Назад", callback_data="task_back_to_constructor"),
-        InlineKeyboardButton("🏠 Главное меню", callback_data="nav_main_menu")
-    ])
+        InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor"),
+        InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu") ]
+    )
 
     return InlineKeyboardMarkup(keyboard)
 
@@ -3970,23 +4055,30 @@ async def task_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Отправка уведомления рекламодателю, если задан
     if task['advertiser_user_id']:
         try:
+            task_name = task['task_name'] or get_text('task_default_name', context)
             advertiser_user = get_user_settings(task['advertiser_user_id'])
+
             if advertiser_user:
                 lang = advertiser_user.get('language_code', 'en')
-                advertiser_texts = TEXTS.get(lang, TEXTS['en'])
-
                 await context.bot.send_message(
                     chat_id=task['advertiser_user_id'],
-                    text=f"📢 Вас указали рекламодателем в задаче \"{task['task_name'] or 'Без названия'}\". "
-                         f"Вы будете получать уведомления о публикациях."
+                    text=get_text('task_advertiser_notify', context, lang).format(
+                        task_name=task_name
+                    )
                 )
+
         except Exception as e:
             logger.error(f"Не удалось уведомить рекламодателя: {e}")
 
-    # FIXED: Add job count to success message
-    success_text = f"✅ Задача #{task_id} успешно активирована!\n\n"
-    success_text += f"Создано публикаций: {job_count}\n"
-    success_text += "Публикации будут выполнены согласно расписанию"
+    success_text = (
+            get_text('task_activated_title', context).format(task_id=task_id)
+            + "\n\n"
+    )
+    success_text += (
+            get_text('task_activated_jobs_count', context).format(job_count=job_count)
+            + "\n"
+    )
+    success_text += get_text('task_activated_schedule_info', context)
 
     await query.edit_message_text(
         success_text,
@@ -3995,35 +4087,6 @@ async def task_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     del context.user_data['current_task_id']
     return MAIN_MENU
-
-    # Отправляем уведомление рекламодателю, если задан
-    if task['advertiser_user_id']:
-        try:
-            advertiser_user = get_user_settings(task['advertiser_user_id'])
-            if advertiser_user:
-                lang = advertiser_user.get('language_code', 'en')
-                advertiser_texts = TEXTS.get(lang, TEXTS['en'])
-
-                await context.bot.send_message(
-                    chat_id=task['advertiser_user_id'],
-                    text=f"📢 Вас указали рекламодателем в задаче \"{task['task_name'] or 'Без названия'}\". "
-                         f"Вы будете получать уведомления о публикациях."
-                )
-        except Exception as e:
-            logger.error(f"Не удалось уведомить рекламодателя: {e}")
-
-        # FIXED: Add job count to success message
-        success_text = f"✅ Задача #{task_id} успешно активирована!\n\n"
-        success_text += f"Создано публикаций: {job_count}\n"
-        success_text += "Публикации будут выполнены согласно расписанию"
-
-        await query.edit_message_text(
-            success_text,
-            reply_markup=back_to_main_menu_keyboard(context)
-        )
-
-        del context.user_data['current_task_id']
-        return MAIN_MENU
 
 
 # --- Админ-панель ---
@@ -4625,18 +4688,28 @@ async def tariff_buy_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         tariff_data = get_tariff_limits(tariff_key_str)  # 'pro1' -> {'name': 'Pro 1', ...}
     except (KeyError, AttributeError):
-        await query.message.reply_text("❌ Ошибка: Тариф не найден.")
+        await query.message.reply_text(get_text('error_tariff_not_found', context))
         return TARIFF
 
     # --- Параметры инвойса ---
-    title = f"Оплата тарифа '{tariff_data['name']}'"
-    description = f"Доступ к лимитам: {tariff_data['tasks']} задач, {tariff_data['time_slots']} T, {tariff_data['date_slots']} D"
-    payload = f"tariff_buy_{tariff_key_str}_user_{user_id}"  # 'tariff_buy_pro1_user_12345'
+    title = get_text('invoice_title_template', context).format(
+        tariff_name=tariff_data['name']
+    )
+
+    description = get_text('invoice_description_template', context).format(
+        tasks=tariff_data['tasks'],
+        time_slots=tariff_data['time_slots'],
+        date_slots=tariff_data['date_slots']
+    )
+
+    payload = f"tariff_buy_{tariff_key_str}_user_{user_id}"  # e.g. 'tariff_buy_pro1_user_12345'
     currency = "XTR"
-    price = tariff_data['price']  # 300
+    price = tariff_data['price']  # e.g. 300
 
     if price <= 0:
-        await query.message.reply_text("❌ Этот тариф нельзя купить.")
+        await query.message.reply_text(
+            get_text('error_tariff_cannot_buy', context)
+        )
         return TARIFF
 
     prices = [
@@ -4649,15 +4722,17 @@ async def tariff_buy_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
             title=title,
             description=description,
             payload=payload,
-            provider_token="",  # Токен не нужен для XTR (Stars)
+            provider_token="",  # Token not required for XTR (Stars)
             currency=currency,
             prices=prices,
         )
     except Exception as e:
         logger.error(f"Ошибка при отправке инвойса: {e}", exc_info=True)
-        await query.message.reply_text("❌ Не удалось создать счет на оплату. Попробуйте позже.")
+        await query.message.reply_text(
+            get_text('error_invoice_creation', context)
+        )
+        return TARIFF
 
-    return TARIFF
 
 async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -4673,7 +4748,7 @@ async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.answer(ok=True)
     else:
         # Отклоняем неизвестные платежи
-        await query.answer(ok=False, error_message="Что-то пошло не так...")
+        await query.answer(ok=False, error_message=get_text('precheckout_error', context))
         logger.warning(f"Получен неизвестный precheckout: {query.invoice_payload}")
 
 
@@ -4708,8 +4783,10 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
 
             # 3. Сообщить пользователю
             await update.message.reply_text(
-                f"✅ Оплата прошла успешно! Ваш тариф обновлен до '{tariff_name}'.\n"
-                f"Спасибо, что пользуетесь нашим сервисом!"
+                text=get_text('payment_success_template', context).format(
+                    tariff_name=tariff_name
+                ),
+                reply_markup=main_menu_reply_keyboard(context),
             )
 
             # 4. (Опционально) Уведомить админа
@@ -4756,10 +4833,12 @@ async def my_chat_member_handler(update: Update, context: ContextTypes.DEFAULT_T
             try:
                 text = lang_texts.get('channel_added', TEXTS['en']['channel_added']).format(title=chat.title)
                 await context.bot.send_message(chat_id=user.id, text=text)
-            except (TelegramError, Forbidden):
-                logger.warning(
-                    TEXTS['en']['error_notify_user'].format(user_id=user.id, action="add channel")
-                )
+            except (TelegramError, Forbidden): (
+                    logger.warning(
+                        lang_texts.get('error_notify_user', TEXTS['en']['error_notify_user']).format(user_id=user.id) + f" (Чат: {chat.title})"
+                    )
+            )
+
             logger.info(f"Бот добавлен в {chat.title} (ID: {chat.id}) пользователем {user.id}")
 
         elif new_status in ["left", "kicked"]:
