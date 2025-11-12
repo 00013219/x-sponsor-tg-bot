@@ -236,8 +236,10 @@ TEXTS = {
         'channel_remove_confirm': "Вы уверены, что хотите удалить канал **{title}** из списка ваших площадок?",
         'channel_remove_success': "🗑️ Канал **{title}** удален из ваших площадок.",
 
+
         'my_channels_title': "**🧩 Мои площадки**",
         'my_channels_footer': "**Инструкция:**\n1. Добавьте канал, где бот имеет права админа.\n2. Нажмите на канал для управления.",
+        'my_channels_empty': "❌ У вас пока нет добавленных каналов.",
 
         'post_type_menu': "📤 **Выбор типа поста**",
         'post_type_from_bot': "От бота (Копирование)",
@@ -453,6 +455,7 @@ Let's get started! Please select your language:""",
 
         'my_channels_title': "**🧩 My Platforms**",
         'my_channels_footer': "**Instruction:**\n1. Add a channel where the bot has admin rights.\n2. Click on the channel to manage it.",
+        'my_channels_empty': "❌ You have not added any channels yet.",
 
         'post_type_menu': "📤 **Post Type Selection**",
         'post_type_from_bot': "From bot (Copy)",
@@ -669,6 +672,7 @@ Mi objetivo es hacer que tu colaboración con los anunciantes sea lo más eficie
 
         'my_channels_title': "**🧩 Mis Plataformas**",
         'my_channels_footer': "**Instrucción:**\n1. Añade un canal donde el bot tenga derechos de administrador.\n2. Haz clic en el canal para gestionarlo.",
+        'my_channels_empty': "❌ Aún no tienes canales añadidos.",
 
         'post_type_menu': "📤 **Selección de Tipo de Publicación**",
         'post_type_from_bot': "Desde el bot (Copia)",
@@ -885,6 +889,7 @@ Commençons! Veuillez sélectionner votre langue:""",
 
         'my_channels_title': "**🧩 Mes Plateformes**",
         'my_channels_footer': "**Instruction:**\n1. Ajoutez un canal où le bot a des droits d'administrateur.\n2. Cliquez sur le canal pour le gérer.",
+        'my_channels_empty': "❌ Vous n'avez pas encore ajouté de canaux.",
 
         'post_type_menu': "📤 **Sélection du Type de Publication**",
         'post_type_from_bot': "Du bot (Copie)",
@@ -1101,6 +1106,7 @@ Commençons! Veuillez sélectionner votre langue:""",
 
         'my_channels_title': "**🧩 Мої майданчики**",
         'my_channels_footer': "**Інструкція:**\n1. Додайте канал, де бот має права адміна.\n2. Натисніть на канал для керування.",
+        'my_channels_empty': "❌ У вас поки що немає доданих каналів.",
 
         'post_type_menu': "📤 **Вибір типу посту**",
         'post_type_from_bot': "Від бота (Копіювання)",
@@ -1317,6 +1323,7 @@ Lassen Sie uns beginnen! Bitte wählen Sie Ihre Sprache:""",
 
         'my_channels_title': "**🧩 Meine Plattformen**",
         'my_channels_footer': "**Anleitung:**\n1. Fügen Sie einen Kanal hinzu, in dem der Bot Admin-Rechte hat.\n2. Klicken Sie auf den Kanal zur Verwaltung.",
+        'my_channels_empty': "❌ Du hast noch keine Kanäle hinzugefügt.",
 
         'post_type_menu': "📤 **Beitragstyp auswählen**",
         'post_type_from_bot': "Vom Bot (Kopieren)",
@@ -1813,6 +1820,36 @@ def get_user_settings(user_id: int) -> Dict:
 def get_user_by_username(username: str) -> Optional[Dict]:
     return db_query("SELECT * FROM users WHERE lower(username) = lower(%s)", (username,), fetchone=True)
 
+
+def persistent_reply_keyboard(context: ContextTypes.DEFAULT_TYPE):
+    """Постоянная клавиатура (ReplyKeyboard), отображаемая во всех состояниях"""
+    user_id = context.user_data.get('user_id', 0)
+    lang = context.user_data.get('language_code', 'en')
+
+    keyboard = [
+        [
+            KeyboardButton(get_text('nav_new_task_btn', context, lang)),
+            KeyboardButton(get_text('nav_my_tasks_btn', context, lang))
+        ],
+        [
+            KeyboardButton(get_text('nav_language_btn', context, lang)),
+            KeyboardButton(get_text('nav_timezone_btn', context, lang))
+        ],
+        [
+            KeyboardButton(get_text('nav_tariff_btn', context, lang)),
+            KeyboardButton(get_text('nav_reports_btn', context, lang))
+        ]
+    ]
+
+    # Добавляем кнопку "Boss" только владельцу
+    if user_id == OWNER_ID:
+        keyboard.append([KeyboardButton(get_text('nav_boss_btn', context, lang))])
+
+    return ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True,
+        one_time_keyboard=False
+    )
 
 # --- Каналы ---
 def get_user_channels(user_id: int) -> List[Dict]:
@@ -2347,10 +2384,9 @@ async def handle_reply_keyboard(update: Update, context: ContextTypes.DEFAULT_TY
     elif text == get_text('nav_reports_btn', context, lang):
         return await nav_reports(update, context)
     elif text == get_text('nav_boss_btn', context, lang):
-        return await nav_boss(update, context)
-    else:
-        # Unknown button
-        return MAIN_MENU
+        # Add check to ensure only owner can use this button
+        if context.user_data.get('user_id') == OWNER_ID:
+            return await nav_boss(update, context)
 
 # --- 1. Процесс /start ---
 
@@ -2908,9 +2944,15 @@ async def show_task_constructor(update: Update, context: ContextTypes.DEFAULT_TY
 async def task_constructor_entrypoint(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Точка входа в 'Новая задача' (кнопка 'nav_new_task')"""
     query = update.callback_query
-    await query.answer()
 
-    user_id = context.user_data['user_id']
+    # If triggered via InlineKeyboardButton
+    if query:
+        await query.answer()
+        message = query.message
+    else:
+        message = update.message
+
+    user_id = context.user_data.get('user_id')
     user_tariff = context.user_data.get('tariff', 'free')
 
     # --- НОВАЯ ПРОВЕРКА ЛИМИТА ЗАДАЧ ---
@@ -2918,25 +2960,30 @@ async def task_constructor_entrypoint(update: Update, context: ContextTypes.DEFA
     max_tasks = limits['tasks']
 
     current_tasks = get_user_tasks(user_id)
-
     if len(current_tasks) >= max_tasks:
-        # Уведомляем во всплывающем окне
-        await query.answer(
-            f"❌ Достигнут лимит задач ({len(current_tasks)} / {max_tasks}) для тарифа '{limits['name']}'.",
-            show_alert=True
-        )
-        # И отправляем сообщение
-        await query.message.reply_text(
-            f"❌ Достигнут лимит задач для вашего тарифа '{limits['name']}' ({len(current_tasks)} / {max_tasks}).\n"
+        warn_text = (
+            f"❌ Достигнут лимит задач для вашего тарифа '{limits['name']}' "
+            f"({len(current_tasks)} / {max_tasks}).\n"
             f"Удалите старые задачи или обновите тариф в /start."
         )
-        return MAIN_MENU  # Остаемся в главном меню
+        if query:
+            await query.answer(
+                f"❌ Достигнут лимит задач ({len(current_tasks)} / {max_tasks}) для тарифа '{limits['name']}'.",
+                show_alert=True
+            )
+            await query.message.reply_text(warn_text)
+        else:
+            await message.reply_text(warn_text)
+        return MAIN_MENU
+
     # --- КОНЕЦ ПРОВЕРКИ ---
 
-    # Создаем новую пустую задачу в БД
-    task_id = create_task(context.user_data['user_id'])
+    task_id = create_task(user_id)
     if not task_id:
-        await query.edit_message_text(get_text('error_db', context))
+        if query:
+            await query.edit_message_text(get_text('error_db', context))
+        else:
+            await message.reply_text(get_text('error_db', context))
         return MAIN_MENU
 
     context.user_data['current_task_id'] = task_id
@@ -4776,19 +4823,30 @@ def main():
 
     # --- ConversationHandler ---
 
+    # --- ИЗМЕНЕНИЕ: ДОБАВЛЯЕМ MessageHandler ВО ВСЕ СОСТОЯНИЯ,
+    #     ГДЕ НЕТ ДРУГОГО ОБРАБОТЧИКА ТЕКСТА ---
+    reply_button_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, handle_reply_keyboard)
+
     all_states = {
         # --- Процесс /start ---
-        START_SELECT_LANG: [CallbackQueryHandler(start_select_lang, pattern="^lang_")],
-        START_SELECT_TZ: [CallbackQueryHandler(start_select_timezone, pattern="^tz_")],
+        START_SELECT_LANG: [
+            CallbackQueryHandler(start_select_lang, pattern="^lang_"),
+            reply_button_handler  # <--- ДОБАВЛЕНО
+        ],
+        START_SELECT_TZ: [
+            CallbackQueryHandler(start_select_timezone, pattern="^tz_"),
+            reply_button_handler  # <--- ДОБАВЛЕНО
+        ],
 
         # --- Главное меню ---
         MAIN_MENU: [
+            # Этот обработчик УЖЕ ЗДЕСЬ, все верно
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_reply_keyboard),
-            CallbackQueryHandler(task_constructor_entrypoint, pattern="^nav_new_task$"),  # <_ Изменено
-            CallbackQueryHandler(nav_my_tasks, pattern="^nav_my_tasks$"),  # <_ Изменено
+            CallbackQueryHandler(task_constructor_entrypoint, pattern="^nav_new_task$"),
+            CallbackQueryHandler(nav_my_tasks, pattern="^nav_my_tasks$"),
             CallbackQueryHandler(nav_my_channels, pattern="^nav_channels$"),
             CallbackQueryHandler(nav_free_dates, pattern="^nav_free_dates$"),
-            CallbackQueryHandler(nav_tariff, pattern="^nav_tariff$"),  # <_ Изменено
+            CallbackQueryHandler(nav_tariff, pattern="^nav_tariff$"),
             CallbackQueryHandler(nav_reports, pattern="^nav_reports$"),
             CallbackQueryHandler(nav_language, pattern="^nav_language$"),
             CallbackQueryHandler(nav_timezone, pattern="^nav_timezone$"),
@@ -4798,44 +4856,42 @@ def main():
         # --- Экраны меню (возврат в главное) ---
         MY_TASKS: [
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
-            CallbackQueryHandler(task_constructor_entrypoint, pattern="^nav_new_task$"),  # <_ Изменено
+            CallbackQueryHandler(task_constructor_entrypoint, pattern="^nav_new_task$"),
             CallbackQueryHandler(task_edit_entrypoint, pattern="^task_edit_"),
+            reply_button_handler  # <--- ДОБАВЛЕНО
         ],
-        MY_CHANNELS: [CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$")],
-        FREE_DATES: [CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$")],
-
-        # --- ИЗМЕНЕНИЕ ЗДЕСЬ (TARIFF) ---
+        MY_CHANNELS: [
+            CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
+            reply_button_handler  # <--- ДОБАВЛЕНО
+        ],
+        FREE_DATES: [
+            CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
+            reply_button_handler  # <--- ДОБАВЛЕНО
+        ],
         TARIFF: [
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
-            # Было: CallbackQueryHandler(tariff_pay_stars, pattern="^tariff_pay$")
-            # Стало:
-            CallbackQueryHandler(tariff_buy_select, pattern="^tariff_buy_")
+            CallbackQueryHandler(tariff_buy_select, pattern="^tariff_buy_"),
+            reply_button_handler  # <--- ДОБАВЛЕНО
         ],
-        # --- КОНЕЦ ИЗМЕНЕНИЯ ---
-
-        REPORTS: [CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$")],
+        REPORTS: [
+            CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
+            reply_button_handler  # <--- ДОБАВЛЕНО
+        ],
         BOSS_PANEL: [
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
-
-            # --- ADD THIS LINE TO HANDLE THE 'НАЗАД' BUTTON FROM SUB-MENUS (like Statistics) ---
             CallbackQueryHandler(nav_boss, pattern="^nav_boss$"),
-
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
             CallbackQueryHandler(boss_mailing, pattern="^boss_mailing$"),
             CallbackQueryHandler(boss_signature, pattern="^boss_signature$"),
             CallbackQueryHandler(boss_users, pattern="^boss_users$"),
             CallbackQueryHandler(boss_stats, pattern="^boss_stats$"),
-            # CallbackQueryHandler(boss_limits, pattern="^boss_limits$"),
-            # CallbackQueryHandler(boss_tariffs, pattern="^boss_tariffs$"),
-
-            # --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
-            CallbackQueryHandler(boss_ban_start, pattern="^boss_ban$"),  # <--- Заменено
-            # --- КОНЕЦ ИЗМЕНЕНИЯ ---
-
+            CallbackQueryHandler(boss_ban_start, pattern="^boss_ban$"),
             CallbackQueryHandler(boss_money, pattern="^boss_money$"),
             CallbackQueryHandler(boss_logs, pattern="^boss_logs$"),
+            reply_button_handler  # <--- ДОБАВЛЕНО
         ],
 
+        # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
         BOSS_BAN_SELECT_USER: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, boss_ban_receive_user),
             CallbackQueryHandler(nav_boss, pattern="^nav_boss$"),
@@ -4844,24 +4900,28 @@ def main():
             CallbackQueryHandler(boss_ban_confirm_yes, pattern="^boss_ban_confirm_yes$"),
             CallbackQueryHandler(boss_unban_confirm_yes, pattern="^boss_unban_confirm_yes$"),
             CallbackQueryHandler(nav_boss, pattern="^nav_boss$"),
+            reply_button_handler  # <--- ДОБАВЛЕНО
         ],
 
+        # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
         BOSS_MAILING_MESSAGE: [
             MessageHandler(filters.ALL & ~filters.COMMAND, boss_mailing_receive_message),
             CallbackQueryHandler(nav_boss, pattern="^nav_boss$"),
         ],
 
+        # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
         BOSS_MAILING_EXCLUDE: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, boss_mailing_exclude),
             CallbackQueryHandler(boss_mailing_skip_exclude, pattern="^boss_mailing_skip_exclude$"),
             CallbackQueryHandler(nav_boss, pattern="^nav_boss$"),
         ],
-
         BOSS_MAILING_CONFIRM: [
             CallbackQueryHandler(boss_mailing_send, pattern="^boss_mailing_send$"),
             CallbackQueryHandler(nav_boss, pattern="^nav_boss$"),
+            reply_button_handler  # <--- ДОБАВЛЕНО
         ],
 
+        # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
         BOSS_SIGNATURE_EDIT: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, boss_signature_receive),
             CallbackQueryHandler(boss_signature_delete, pattern="^boss_signature_delete$"),
@@ -4884,14 +4944,18 @@ def main():
             CallbackQueryHandler(task_set_advertiser, pattern="^task_set_advertiser$"),
             CallbackQueryHandler(task_set_post_type, pattern="^task_set_post_type$"),
             CallbackQueryHandler(task_delete, pattern="^task_delete$"),
+            reply_button_handler  # <--- ДОБАВЛЕНО
         ],
 
         # --- Вложенные состояния конструктора ---
+
+        # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
         TASK_SET_NAME: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, task_receive_name),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
         ],
+        # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
         TASK_SET_MESSAGE: [
             MessageHandler(filters.ALL & ~filters.COMMAND, task_receive_message),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
@@ -4901,12 +4965,15 @@ def main():
             CallbackQueryHandler(task_toggle_channel, pattern="^channel_toggle_"),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
+            reply_button_handler  # <--- ДОБАВЛЕНО
         ],
+        # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
         TASK_SET_ADVERTISER: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, task_receive_advertiser),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
         ],
+        # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
         TASK_SET_CUSTOM_TIME: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, time_receive_custom),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
@@ -4917,18 +4984,20 @@ def main():
         CALENDAR_VIEW: [
             CallbackQueryHandler(calendar_navigation, pattern="^calendar_prev$"),
             CallbackQueryHandler(calendar_navigation, pattern="^calendar_next$"),
-            CallbackQueryHandler(calendar_day_select, pattern="^calendar_day_"),  # <_ Изменено
+            CallbackQueryHandler(calendar_day_select, pattern="^calendar_day_"),
             CallbackQueryHandler(calendar_select_all, pattern="^calendar_select_all$"),
             CallbackQueryHandler(calendar_reset, pattern="^calendar_reset$"),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
+            reply_button_handler  # <--- ДОБАВЛЕНО
         ],
         TIME_SELECTION: [
-            CallbackQueryHandler(time_slot_select, pattern="^time_select_"),  # <_ Изменено
+            CallbackQueryHandler(time_slot_select, pattern="^time_select_"),
             CallbackQueryHandler(time_custom, pattern="^time_custom$"),
-            CallbackQueryHandler(time_clear, pattern="^time_clear$"),  # <_ Изменено
+            CallbackQueryHandler(time_clear, pattern="^time_clear$"),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
+            reply_button_handler  # <--- ДОБАВЛЕНО
         ],
 
         # --- Настройки закрепления и удаления ---
@@ -4936,21 +5005,23 @@ def main():
             CallbackQueryHandler(pin_duration_select, pattern="^pin_"),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
+            reply_button_handler  # <--- ДОБАВЛЕНО
         ],
         TASK_SET_DELETE: [
             CallbackQueryHandler(delete_duration_select, pattern="^delete_"),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
+            reply_button_handler  # <--- ДОБАВЛЕНО
         ],
         TASK_DELETE_CONFIRM: [
             CallbackQueryHandler(task_delete_confirm_yes, pattern="^task_delete_confirm_yes$"),
             CallbackQueryHandler(task_delete_confirm_no, pattern="^task_delete_confirm_no$"),
-
-            # Fallbacks just in case
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
+            reply_button_handler  # <--- ДОБАВЛЕНО
         ],
     }
+    # ... (rest of the main() function is unchanged) ...
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start_command)],
@@ -4966,12 +5037,10 @@ def main():
     application.add_handler(CommandHandler("jobs", debug_jobs))
 
     # --- НОВЫЕ ОБРАБОТЧИКИ ПЛАТЕЖЕЙ ---
-    # (Добавляем их *вне* ConversationHandler)
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
-    application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))  # <_ Изменено
+    application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
     # --- КОНЕЦ НОВОГО БЛОКА ---
 
-    # Обработчик изменения статуса бота в чатах (вне диалога)
     application.add_handler(ChatMemberHandler(
         my_chat_member_handler,
         ChatMemberHandler.MY_CHAT_MEMBER
