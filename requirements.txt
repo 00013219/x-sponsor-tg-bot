@@ -1,6 +1,4 @@
 #bot
-fastapi
-uvicorn
 python-telegram-bot==20.0
 apscheduler==3.10.4
 psycopg2-binary==2.9.11
