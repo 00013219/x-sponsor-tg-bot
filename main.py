@@ -358,6 +358,53 @@ TEXTS = {
         'invoice_title_template': "Оплата тарифа '{tariff_name}'",
         'invoice_description_template': "Доступ к лимитам: {tasks} задач, {time_slots} T, {date_slots} D",
         'precheckout_error': "Что-то пошло не так...",
+
+        'task_message_current_prompt': "Ваше текущее сообщение для публикации:\n\n(Чтобы изменить, просто отправьте новое)",
+        'task_delete_message_btn': "🗑️ Удалить это сообщение",
+        'task_message_display_error': "❌ Не удалось отобразить сохраненное сообщение (возможно, оно было удалено).",
+        'task_message_deleted_alert': "Сообщение удалено!",
+        'alert_pin_notify_status': "🔔 Пуш: {status}",
+        'alert_report_status': "📊 Отчёт: {status}",
+        'alert_post_type_status': "📤 Тип поста: {status}",
+        'calendar_header_dates': "📅 {month_year_str}: {dates_str}\n",
+        'calendar_header_weekdays': "📅 Дата: {weekdays_str}\n",
+        'calendar_info_weekdays': "*При выборе дней недели расписание будет повторяться каждую неделю\n",
+        'calendar_info_limit_slots': "*Не более {max_time_slots} слотов времени для тарифа {tariff_name}\n\n",
+        'calendar_date_limit_alert': "❌ Лимит тарифа ({limits['name']}): не более {max_dates} дат",
+        'calendar_weekdays_short': "Пн,Вт,Ср,Чт,Пт,Сб,Вс",
+        'free_dates_header': "📅 **Свободные даты (без постов):**\n{free_dates_str}\n",
+        'free_dates_none_60d': "Нет полностью свободных дат в ближайшие 60 дней.",
+        'free_dates_schedule_header_30d': "📅 **Ваши авто-постинг задачи на 30 дней:**\n",
+        'free_dates_schedule_empty_30d': "У вас нет запланированных публикаций на 30 дней.",
+        'error_task_id_not_found': "Ошибка: ID задачи не найден.",
+        'error_task_not_found_db': "Ошибка: Задача {task_id} не найдена в БД.",
+        'status_count_suffix': "шт.",
+        'status_days_suffix': "дн.",
+        'status_hours_suffix': "ч",
+        'status_hours_suffix_short': "h",
+        'status_dates_count': "✅ {count} {suffix}",
+        'status_weekdays_count': "✅ {count} {suffix}",
+        'status_times_count': "✅ {count} {suffix}",
+        'status_pin_duration': "✅ {duration}{suffix}",
+        'status_delete_duration': "✅ {duration}{suffix}",
+        'status_advertiser_id': "✅ ID: {advertiser_user_id}",
+        'header_channels': "📢 Каналы: ",
+        'header_message': "📝 Сообщение: ",
+        'header_date': "📅 Дата: ",
+        'header_weekdays': "📅 Дата: ",
+        'header_time': "🕐 Время: ",
+        'header_pin': "📌 Закреп: ",
+        'header_autodelete': "🗑️ Автоудаление: ",
+        'header_post_type': "📤 Тип поста: ",
+        'header_pin_notify': "🔔 Пуш: ",
+        'header_report': "📊 Отчёт: ",
+        'header_advertiser': "🔗 Рекламодатель: ",
+
+        'limit_error_tasks': "❌ Достигнут лимит задач ({current}/{max}) для тарифа {tariff}.\nУдалите старые задачи или обновите тариф.",
+        'limit_error_channels': "❌ Достигнут лимит каналов ({current}/{max}) для тарифа {tariff}.\nУдалите старые каналы или обновите тариф.",
+        'limit_error_dates': "❌ Достигнут лимит дат ({current}/{max}) для тарифа {tariff}.",
+        'limit_error_times': "❌ Достигнут лимит слотов времени ({current}/{max}) для тарифа {tariff}.",
+        'limit_error_weekdays': "❌ Достигнут лимит дней недели ({current}/{max}) для тарифа {tariff}.",
     },
     'en': {
         'welcome_lang': """🤖 Welcome to XSponsorBot!
@@ -588,6 +635,53 @@ Let's get started! Please select your language:""",
         'invoice_title_template': "Payment for tariff '{tariff_name}'",
         'invoice_description_template': "Access to limits: {tasks} tasks, {time_slots} T, {date_slots} D",
         'precheckout_error': "Something went wrong...",
+
+        'task_message_current_prompt': "Your current message for publication:\n\n(To change, just send a new one)",
+        'task_delete_message_btn': "🗑️ Delete this message",
+        'task_message_display_error': "❌ Failed to display the saved message (it might have been deleted).",
+        'task_message_deleted_alert': "Message deleted!",
+        'alert_pin_notify_status': "🔔 Push: {status}",
+        'alert_report_status': "📊 Report: {status}",
+        'alert_post_type_status': "📤 Post Type: {status}",
+        'calendar_header_dates': "📅 {month_year_str}: {dates_str}\n",
+        'calendar_header_weekdays': "📅 Weekdays: {weekdays_str}\n",
+        'calendar_info_weekdays': "*If you select weekdays, the schedule will repeat weekly\n",
+        'calendar_info_limit_slots': "*No more than {max_time_slots} time slots for tariff {tariff_name}\n\n",
+        'calendar_date_limit_alert': "❌ Tariff limit ({limits['name']}): no more than {max_dates} dates",
+        'calendar_weekdays_short': "Mo,Tu,We,Th,Fr,Sa,Su",
+        'free_dates_header': "📅 **Free dates (no posts):**\n{free_dates_str}\n",
+        'free_dates_none_60d': "No completely free dates in the next 60 days.",
+        'free_dates_schedule_header_30d': "📅 **Your auto-posting tasks for 30 days:**\n",
+        'free_dates_schedule_empty_30d': "You have no scheduled publications for 30 days.",
+        'error_task_id_not_found': "Error: Task ID not found.",
+        'error_task_not_found_db': "Error: Task {task_id} not found in DB.",
+        'status_count_suffix': "items",
+        'status_days_suffix': "days",
+        'status_hours_suffix': "h",
+        'status_hours_suffix_short': "h",
+        'status_dates_count': "✅ {count} {suffix}",
+        'status_weekdays_count': "✅ {count} {suffix}",
+        'status_times_count': "✅ {count} {suffix}",
+        'status_pin_duration': "✅ {duration}{suffix}",
+        'status_delete_duration': "✅ {duration}{suffix}",
+        'status_advertiser_id': "✅ ID: {advertiser_user_id}",
+        'header_channels': "📢 Channels: ",
+        'header_message': "📝 Message: ",
+        'header_date': "📅 Date: ",
+        'header_weekdays': "📅 Weekdays: ",
+        'header_time': "🕐 Time: ",
+        'header_pin': "📌 Pin: ",
+        'header_autodelete': "🗑️ Auto-delete: ",
+        'header_post_type': "📤 Post Type: ",
+        'header_pin_notify': "🔔 Push: ",
+        'header_report': "📊 Report: ",
+        'header_advertiser': "🔗 Advertiser: ",
+
+        'limit_error_tasks': "❌ Task limit reached ({current}/{max}) for tariff {tariff}.\nPlease delete old tasks or upgrade your tariff.",
+        'limit_error_channels': "❌ Channel limit reached ({current}/{max}) for tariff {tariff}.\nPlease remove old channels or upgrade your tariff.",
+        'limit_error_dates': "❌ Date limit reached ({current}/{max}) for tariff {tariff}.",
+        'limit_error_times': "❌ Time slot limit reached ({current}/{max}) for tariff {tariff}.",
+        'limit_error_weekdays': "❌ Weekday limit reached ({current}/{max}) for tariff {tariff}.",
     },
     'es': {
         # ... (existing Spanish localizations) ...
@@ -819,6 +913,53 @@ Mi objetivo es hacer que tu colaboración con los anunciantes sea lo más eficie
         'invoice_title_template': "Pago de la tarifa '{tariff_name}'",
         'invoice_description_template': "Acceso a límites: {tasks} tareas, {time_slots} T, {date_slots} D",
         'precheckout_error': "Algo salió mal...",
+
+        'task_message_current_prompt': "Tu mensaje actual para publicación:\n\n(Para cambiar, simplemente envía uno nuevo)",
+        'task_delete_message_btn': "🗑️ Eliminar este mensaje",
+        'task_message_display_error': "❌ No se pudo mostrar el mensaje guardado (podría haber sido eliminado).",
+        'task_message_deleted_alert': "¡Mensaje eliminado!",
+        'alert_pin_notify_status': "🔔 Notificación: {status}",
+        'alert_report_status': "📊 Informe: {status}",
+        'alert_post_type_status': "📤 Tipo de post: {status}",
+        'calendar_header_dates': "📅 {month_year_str}: {dates_str}\n",
+        'calendar_header_weekdays': "📅 Días de la semana: {weekdays_str}\n",
+        'calendar_info_weekdays': "*Si seleccionas días de la semana, el horario se repetirá semanalmente\n",
+        'calendar_info_limit_slots': "*No más de {max_time_slots} franjas horarias para la tarifa {tariff_name}\n\n",
+        'calendar_date_limit_alert': "❌ Límite de tarifa ({limits['name']}): no más de {max_dates} fechas",
+        'calendar_weekdays_short': "Lu,Ma,Mi,Ju,Vi,Sá,Do",
+        'free_dates_header': "📅 **Fechas libres (sin posts):**\n{free_dates_str}\n",
+        'free_dates_none_60d': "No hay fechas completamente libres en los próximos 60 días.",
+        'free_dates_schedule_header_30d': "📅 **Tus tareas de auto-publicación para 30 días:**\n",
+        'free_dates_schedule_empty_30d': "No tienes publicaciones programadas para 30 días.",
+        'error_task_id_not_found': "Error: ID de tarea no encontrado.",
+        'error_task_not_found_db': "Error: Tarea {task_id} no encontrada en la BD.",
+        'status_count_suffix': "elem.",
+        'status_days_suffix': "días",
+        'status_hours_suffix': "h",
+        'status_hours_suffix_short': "h",
+        'status_dates_count': "✅ {count} {suffix}",
+        'status_weekdays_count': "✅ {count} {suffix}",
+        'status_times_count': "✅ {count} {suffix}",
+        'status_pin_duration': "✅ {duration}{suffix}",
+        'status_delete_duration': "✅ {duration}{suffix}",
+        'status_advertiser_id': "✅ ID: {advertiser_user_id}",
+        'header_channels': "📢 Canales: ",
+        'header_message': "📝 Mensaje: ",
+        'header_date': "📅 Fecha: ",
+        'header_weekdays': "📅 Días de la semana: ",
+        'header_time': "🕐 Hora: ",
+        'header_pin': "📌 Anclar: ",
+        'header_autodelete': "🗑️ Auto-eliminar: ",
+        'header_post_type': "📤 Tipo de post: ",
+        'header_pin_notify': "🔔 Notificación: ",
+        'header_report': "📊 Informe: ",
+        'header_advertiser': "🔗 Anunciante: ",
+
+        'limit_error_tasks': "❌ Límite de tareas alcanzado ({current}/{max}) para la tarifa {tariff}.\nElimina tareas antiguas o actualiza tu tarifa.",
+        'limit_error_channels': "❌ Límite de canales alcanzado ({current}/{max}) para la tarifa {tariff}.\nElimina canales antiguos o actualiza tu tarifa.",
+        'limit_error_dates': "❌ Límite de fechas alcanzado ({current}/{max}) para la tarifa {tariff}.",
+        'limit_error_times': "❌ Límite de horarios alcanzado ({current}/{max}) para la tarifa {tariff}.",
+        'limit_error_weekdays': "❌ Límite de días de la semana alcanzado ({current}/{max}) para la tarifa {tariff}.",
     },
     'fr': {
         # ... (existing French localizations) ...
@@ -1050,6 +1191,53 @@ Commençons! Veuillez sélectionner votre langue:""",
         'invoice_title_template': "Paiement de l'abonnement '{tariff_name}'",
         'invoice_description_template': "Accès aux limites : {tasks} tâches, {time_slots} T, {date_slots} D",
         'precheckout_error': "Quelque chose s'est mal passé...",
+
+        'task_message_current_prompt': "Votre message actuel pour la publication:\n\n(Pour changer, envoyez simplement un nouveau)",
+        'task_delete_message_btn': "🗑️ Supprimer ce message",
+        'task_message_display_error': "❌ Échec de l'affichage du message enregistré (il a peut-être été supprimé).",
+        'task_message_deleted_alert': "Message supprimé!",
+        'alert_pin_notify_status': "🔔 Push: {status}",
+        'alert_report_status': "📊 Rapport: {status}",
+        'alert_post_type_status': "📤 Type de post: {status}",
+        'calendar_header_dates': "📅 {month_year_str}: {dates_str}\n",
+        'calendar_header_weekdays': "📅 Jours de la semaine: {weekdays_str}\n",
+        'calendar_info_weekdays': "*Si vous sélectionnez des jours de la semaine, le planning se répétera chaque semaine\n",
+        'calendar_info_limit_slots': "*Pas plus de {max_time_slots} créneaux horaires pour le tarif {tariff_name}\n\n",
+        'calendar_date_limit_alert': "❌ Limite du tarif ({limits['name']}): pas plus de {max_dates} dates",
+        'calendar_weekdays_short': "Lu,Ma,Me,Je,Ve,Sa,Di",
+        'free_dates_header': "📅 **Dates libres (sans posts):**\n{free_dates_str}\n",
+        'free_dates_none_60d': "Aucune date complètement libre dans les 60 prochains jours.",
+        'free_dates_schedule_header_30d': "📅 **Vos tâches de publication auto pour 30 jours:**\n",
+        'free_dates_schedule_empty_30d': "Vous n'avez aucune publication programmée pour 30 jours.",
+        'error_task_id_not_found': "Erreur: ID de tâche non trouvé.",
+        'error_task_not_found_db': "Erreur: Tâche {task_id} non trouvée dans la BDD.",
+        'status_count_suffix': "élém.",
+        'status_days_suffix': "jours",
+        'status_hours_suffix': "h",
+        'status_hours_suffix_short': "h",
+        'status_dates_count': "✅ {count} {suffix}",
+        'status_weekdays_count': "✅ {count} {suffix}",
+        'status_times_count': "✅ {count} {suffix}",
+        'status_pin_duration': "✅ {duration}{suffix}",
+        'status_delete_duration': "✅ {duration}{suffix}",
+        'status_advertiser_id': "✅ ID: {advertiser_user_id}",
+        'header_channels': "📢 Canaux: ",
+        'header_message': "📝 Message: ",
+        'header_date': "📅 Date: ",
+        'header_weekdays': "📅 Jours de la semaine: ",
+        'header_time': "🕐 Heure: ",
+        'header_pin': "📌 Épingler: ",
+        'header_autodelete': "🗑️ Auto-suppression: ",
+        'header_post_type': "📤 Type de post: ",
+        'header_pin_notify': "🔔 Push: ",
+        'header_report': "📊 Rapport: ",
+        'header_advertiser': "🔗 Annonceur: ",
+
+        'limit_error_tasks': "❌ Limite de tâches atteinte ({current}/{max}) pour le tarif {tariff}.\nSupprimez les anciennes tâches ou mettez à jour votre tarif.",
+        'limit_error_channels': "❌ Limite de canaux atteinte ({current}/{max}) pour le tarif {tariff}.\nSupprimez les anciens canaux ou mettez à jour votre tarif.",
+        'limit_error_dates': "❌ Limite de dates atteinte ({current}/{max}) pour le tarif {tariff}.",
+        'limit_error_times': "❌ Limite de créneaux horaires atteinte ({current}/{max}) pour le tarif {tariff}.",
+        'limit_error_weekdays': "❌ Limite de jours de la semaine atteinte ({current}/{max}) pour le tarif {tariff}.",
     },
     'ua': {
         # ... (existing Ukrainian localizations) ...
@@ -1281,6 +1469,53 @@ Commençons! Veuillez sélectionner votre langue:""",
         'invoice_title_template': "Оплата тарифу '{tariff_name}'",
         'invoice_description_template': "Доступ до лімітів: {tasks} завдань, {time_slots} T, {date_slots} D",
         'precheckout_error': "Щось пішло не так...",
+
+        'task_message_current_prompt': "Ваше поточне повідомлення для публікації:\n\n(Щоб змінити, просто надішліть нове)",
+        'task_delete_message_btn': "🗑️ Видалити це повідомлення",
+        'task_message_display_error': "❌ Не вдалося відобразити збережене повідомлення (можливо, воно було видалено).",
+        'task_message_deleted_alert': "Повідомлення видалено!",
+        'alert_pin_notify_status': "🔔 Пуш: {status}",
+        'alert_report_status': "📊 Звіт: {status}",
+        'alert_post_type_status': "📤 Тип посту: {status}",
+        'calendar_header_dates': "📅 {month_year_str}: {dates_str}\n",
+        'calendar_header_weekdays': "📅 Дні тижня: {weekdays_str}\n",
+        'calendar_info_weekdays': "*При виборі днів тижня розклад буде повторюватися щотижня\n",
+        'calendar_info_limit_slots': "*Не більше {max_time_slots} слотів часу для тарифу {tariff_name}\n\n",
+        'calendar_date_limit_alert': "❌ Ліміт тарифу ({limits['name']}): не більше {max_dates} дат",
+        'calendar_weekdays_short': "Пн,Вт,Ср,Чт,Пт,Сб,Нд",
+        'free_dates_header': "📅 **Вільні дати (без постів):**\n{free_dates_str}\n",
+        'free_dates_none_60d': "Немає повністю вільних дат у найближчі 60 днів.",
+        'free_dates_schedule_header_30d': "📅 **Ваші авто-постинг задачі на 30 днів:**\n",
+        'free_dates_schedule_empty_30d': "У вас немає запланованих публікацій на 30 днів.",
+        'error_task_id_not_found': "Помилка: ID завдання не знайдено.",
+        'error_task_not_found_db': "Помилка: Завдання {task_id} не знайдено в БД.",
+        'status_count_suffix': "шт.",
+        'status_days_suffix': "дн.",
+        'status_hours_suffix': "г",
+        'status_hours_suffix_short': "h",
+        'status_dates_count': "✅ {count} {suffix}",
+        'status_weekdays_count': "✅ {count} {suffix}",
+        'status_times_count': "✅ {count} {suffix}",
+        'status_pin_duration': "✅ {duration}{suffix}",
+        'status_delete_duration': "✅ {duration}{suffix}",
+        'status_advertiser_id': "✅ ID: {advertiser_user_id}",
+        'header_channels': "📢 Канали: ",
+        'header_message': "📝 Повідомлення: ",
+        'header_date': "📅 Дата: ",
+        'header_weekdays': "📅 Дні тижня: ",
+        'header_time': "🕐 Час: ",
+        'header_pin': "📌 Закріпити: ",
+        'header_autodelete': "🗑️ Автовидалення: ",
+        'header_post_type': "📤 Тип посту: ",
+        'header_pin_notify': "🔔 Пуш: ",
+        'header_report': "📊 Звіт: ",
+        'header_advertiser': "🔗 Рекламодавець: ",
+
+        'limit_error_tasks': "❌ Досягнуто ліміт завдань ({current}/{max}) для тарифу {tariff}.\nВидаліть старі завдання або оновіть тариф.",
+        'limit_error_channels': "❌ Досягнуто ліміт каналів ({current}/{max}) для тарифу {tariff}.\nВидаліть старі канали або оновіть тариф.",
+        'limit_error_dates': "❌ Досягнуто ліміт дат ({current}/{max}) для тарифу {tariff}.",
+        'limit_error_times': "❌ Досягнуто ліміт слотів часу ({current}/{max}) для тарифу {tariff}.",
+        'limit_error_weekdays': "❌ Досягнуто ліміт днів тижня ({current}/{max}) для тарифу {tariff}.",
     },
     'de': {
         # ... (existing German localizations) ...
@@ -1512,6 +1747,53 @@ Lassen Sie uns beginnen! Bitte wählen Sie Ihre Sprache:""",
         'invoice_title_template': "Zahlung für Tarif '{tariff_name}'",
         'invoice_description_template': "Zugriff auf Limits: {tasks} Aufgaben, {time_slots} T, {date_slots} D",
         'precheckout_error': "Etwas ist schiefgelaufen...",
+
+        'task_message_current_prompt': "Ihre aktuelle Nachricht zur Veröffentlichung:\n\n(Zum Ändern einfach eine neue senden)",
+        'task_delete_message_btn': "🗑️ Diese Nachricht löschen",
+        'task_message_display_error': "❌ Gespeicherte Nachricht konnte nicht angezeigt werden (vielleicht wurde sie gelöscht).",
+        'task_message_deleted_alert': "Nachricht gelöscht!",
+        'alert_pin_notify_status': "🔔 Push: {status}",
+        'alert_report_status': "📊 Bericht: {status}",
+        'alert_post_type_status': "📤 Beitragstyp: {status}",
+        'calendar_header_dates': "📅 {month_year_str}: {dates_str}\n",
+        'calendar_header_weekdays': "📅 Wochentage: {weekdays_str}\n",
+        'calendar_info_weekdays': "*Bei Auswahl von Wochentagen wiederholt sich der Zeitplan wöchentlich\n",
+        'calendar_info_limit_slots': "*Nicht mehr als {max_time_slots} Zeitfenster für Tarif {tariff_name}\n\n",
+        'calendar_date_limit_alert': "❌ Tariflimit ({limits['name']}): nicht mehr als {max_dates} Daten",
+        'calendar_weekdays_short': "Mo,Di,Mi,Do,Fr,Sa,So",
+        'free_dates_header': "📅 **Freie Termine (keine Beiträge):**\n{free_dates_str}\n",
+        'free_dates_none_60d': "Keine vollständig freien Termine in den nächsten 60 Tagen.",
+        'free_dates_schedule_header_30d': "📅 **Ihre Auto-Posting-Aufgaben für 30 Tage:**\n",
+        'free_dates_schedule_empty_30d': "Sie haben keine geplanten Veröffentlichungen für 30 Tage.",
+        'error_task_id_not_found': "Fehler: Aufgaben-ID nicht gefunden.",
+        'error_task_not_found_db': "Fehler: Aufgabe {task_id} nicht in DB gefunden.",
+        'status_count_suffix': "Stk.",
+        'status_days_suffix': "Tage",
+        'status_hours_suffix': "h",
+        'status_hours_suffix_short': "h",
+        'status_dates_count': "✅ {count} {suffix}",
+        'status_weekdays_count': "✅ {count} {suffix}",
+        'status_times_count': "✅ {count} {suffix}",
+        'status_pin_duration': "✅ {duration}{suffix}",
+        'status_delete_duration': "✅ {duration}{suffix}",
+        'status_advertiser_id': "✅ ID: {advertiser_user_id}",
+        'header_channels': "📢 Kanäle: ",
+        'header_message': "📝 Nachricht: ",
+        'header_date': "📅 Datum: ",
+        'header_weekdays': "📅 Wochentage: ",
+        'header_time': "🕐 Uhrzeit: ",
+        'header_pin': "📌 Anheften: ",
+        'header_autodelete': "🗑️ Auto-Löschen: ",
+        'header_post_type': "📤 Beitragstyp: ",
+        'header_pin_notify': "🔔 Push: ",
+        'header_report': "📊 Bericht: ",
+        'header_advertiser': "🔗 Werbepartner: ",
+
+        'limit_error_tasks': "❌ Aufgabenlimit erreicht ({current}/{max}) für Tarif {tariff}.\nBitte alte Aufgaben löschen oder Tarif upgraden.",
+        'limit_error_channels': "❌ Kanallimit erreicht ({current}/{max}) für Tarif {tariff}.\nBitte alte Kanäle entfernen oder Tarif upgraden.",
+        'limit_error_dates': "❌ Datumslimit erreicht ({current}/{max}) für Tarif {tariff}.",
+        'limit_error_times': "❌ Zeitfensterlimit erreicht ({current}/{max}) für Tarif {tariff}.",
+        'limit_error_weekdays': "❌ Wochentagslimit erreicht ({current}/{max}) für Tarif {tariff}.",
     }
 }
 
@@ -1528,11 +1810,11 @@ TIMEZONES = {
 
 # --- Тарифы ---
 class Tariff(Enum):
-    FREE = {"name": "FREE", "time_slots": 2, "date_slots": 7, "tasks": 3, "price": 0}
-    PRO1 = {"name": "Pro 1", "time_slots": 5, "date_slots": 10, "tasks": 10, "price": 300}
-    PRO2 = {"name": "Pro 2", "time_slots": 10, "date_slots": 20, "tasks": 15, "price": 500}
-    PRO3 = {"name": "Pro 3", "time_slots": 20, "date_slots": 31, "tasks": 25, "price": 800}
-    PRO4 = {"name": "Pro 4", "time_slots": 24, "date_slots": 31, "tasks": 100, "price": 2000}
+    FREE = {"name": "FREE", "time_slots": 2, "date_slots": 7, "tasks": 3, "channels": 1, "price": 0}
+    PRO1 = {"name": "Pro 1", "time_slots": 5, "date_slots": 10, "tasks": 10, "channels": 3, "price": 300}
+    PRO2 = {"name": "Pro 2", "time_slots": 10, "date_slots": 20, "tasks": 15, "channels": 5, "price": 500}
+    PRO3 = {"name": "Pro 3", "time_slots": 20, "date_slots": 31, "tasks": 25, "channels": 10, "price": 800}
+    PRO4 = {"name": "Pro 4", "time_slots": 24, "date_slots": 31, "tasks": 100, "channels": 50, "price": 2000}
 
 
 def get_tariff_limits(tariff_name: str) -> dict:
@@ -2207,21 +2489,44 @@ def channels_selection_keyboard(context: ContextTypes.DEFAULT_TYPE, selected_cha
     return InlineKeyboardMarkup(keyboard)
 
 
-def calendar_keyboard(context: ContextTypes.DEFAULT_TYPE, year: int, month: int, selected_dates: List[str] = None):
+def calendar_keyboard(
+        context: ContextTypes.DEFAULT_TYPE,
+        year: int,
+        month: int,
+        selected_dates: List[str] = None,
+        selected_weekdays: List[int] = None,  # <-- ADDED
+        today_user_date: datetime.date = None  # <-- ADDED
+):
     """Клавиатура календаря как на изображении"""
     if selected_dates is None:
         selected_dates = []
+    if selected_weekdays is None:  # <-- ADDED
+        selected_weekdays = []
+    if today_user_date is None:  # <-- ADDED
+        today_user_date = datetime.now().date()
 
     # Получаем календарь на месяц
     cal = calendar.monthcalendar(year, month)
-    month_name = datetime(year, month, 1).strftime("%B %Y")
 
-    # Заголовок с днями недели
-    weekdays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    # --- ИСПРАВЛЕНИЕ: Локализация дней недели ---
+    try:
+        weekdays_str = get_text('calendar_weekdays_short', context)  # "Пн,Вт,Ср..."
+        weekdays = weekdays_str.split(',')  # ['Пн', 'Вт', 'Ср'...]
+        if len(weekdays) != 7:  # Failsafe
+            raise Exception("Invalid weekday format")
+    except Exception:
+        weekdays = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+
     keyboard = []
 
-    # Добавляем заголовок с днями недели
-    keyboard.append([InlineKeyboardButton(day, callback_data="ignore") for day in weekdays])
+    # --- ИСПРАВЛЕНИЕ: Добавляем выбор дней недели (вместо статического заголовка) ---
+    weekday_row = []
+    for i, day_name in enumerate(weekdays):  # i will be 0-6 (Пн=0, Вс=6)
+        prefix = "✅" if i in selected_weekdays else ""
+        weekday_row.append(InlineKeyboardButton(f"{prefix}{day_name}", callback_data=f"calendar_wd_{i}"))
+    keyboard.append(weekday_row)
+    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
     # Добавляем дни месяца
     for week in cal:
@@ -2231,30 +2536,48 @@ def calendar_keyboard(context: ContextTypes.DEFAULT_TYPE, year: int, month: int,
                 # Пустая кнопка для дней другого месяца
                 row.append(InlineKeyboardButton(" ", callback_data="ignore"))
             else:
-                date_str = f"{year}-{month:02d}-{day:02d}"
-                is_selected = date_str in selected_dates
-                prefix = "✅" if is_selected else " "
-                row.append(InlineKeyboardButton(f"{prefix}{day}", callback_data=f"calendar_day_{date_str}"))
+                # --- НОВАЯ ЛОГИКА ОТОБРАЖЕНИЯ ---
+                current_date = datetime(year, month, day).date()
+                date_str = current_date.strftime('%Y-%m-%d')
+
+                is_past = current_date < today_user_date
+                is_selected_date = date_str in selected_dates
+                # calendar.weekday() -> Пн=0, Вс=6
+                is_selected_weekday = current_date.weekday() in selected_weekdays
+
+                prefix = " "
+                if is_selected_date:
+                    prefix = "✅"  # Выбранная дата имеет приоритет
+                elif is_selected_weekday and not is_past:
+                    prefix = "🗓️"  # Показываем, что день недели выбран (и не в прошлом)
+
+                callback = f"calendar_day_{date_str}"
+
+                # Блокируем прошедшие даты
+                if is_past:
+                    prefix = "❌"
+                    callback = "calendar_ignore_past"
+
+                row.append(InlineKeyboardButton(f"{prefix}{day}", callback_data=callback))
+                # --- КОНЕЦ НОВОЙ ЛОГИКИ ---
         keyboard.append(row)
 
-    # Кнопки управления
+    # Кнопки управления (month navigation)
+    # (Кнопка 'calendar_select_all' была убрана из ConversationHandler,
+    # поэтому мы ее не добавляем, а ставим 'reset' в центр)
     keyboard.append([
-        InlineKeyboardButton(get_text('calendar_prev', context), callback_data="calendar_prev"),
-        InlineKeyboardButton(get_text('calendar_entire_month', context), callback_data="calendar_select_all"),
-        InlineKeyboardButton(get_text('calendar_next', context), callback_data="calendar_next")
+        InlineKeyboardButton("⬅️", callback_data="calendar_prev"),
+        InlineKeyboardButton(get_text('calendar_reset', context), callback_data="calendar_reset"),
+        InlineKeyboardButton("➡️", callback_data="calendar_next")
     ])
 
-    keyboard.append([
-        InlineKeyboardButton(get_text('calendar_reset', context), callback_data="calendar_reset")
-    ])
-
+    # Кнопки Назад / Главное меню
     keyboard.append([
         InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor"),
-        InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu") ]
+        InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu")]
     )
 
     return InlineKeyboardMarkup(keyboard)
-
 
 def time_selection_keyboard(context: ContextTypes.DEFAULT_TYPE, selected_times: List[str] = None):
     """Клавиатура выбора времени как на изображении"""
@@ -2635,69 +2958,102 @@ async def nav_my_channels(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def nav_free_dates(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает экран 'Свободные даты' (теперь как список предстоящих публикаций)"""
+    """Показывает экран 'Свободные даты' (НОВАЯ ЛОГИКА)"""
     query = update.callback_query
     await query.answer()
 
     user_id = context.user_data.get('user_id')
-    if not user_id:
-        await query.edit_message_text("Ошибка: ID пользователя не найден.")
-        return MAIN_MENU
-
-    # Получаем таймзону пользователя
     user_tz_str = context.user_data.get('timezone', 'Europe/Moscow')
+
     try:
         user_tz = ZoneInfo(user_tz_str)
     except ZoneInfoNotFoundError:
         user_tz = ZoneInfo('UTC')
 
     now_utc = datetime.now(ZoneInfo('UTC'))
+    today_user = now_utc.astimezone(user_tz).date()
 
-    # Запрос к БД для получения 20 ближайших постов
-    upcoming_jobs = db_query("""
-        SELECT 
-            pj.scheduled_time_utc, 
-            t.task_name, 
-            c.channel_username
-        FROM publication_jobs pj
-        LEFT JOIN tasks t ON pj.task_id = t.id
-        LEFT JOIN channels c ON pj.channel_id = c.channel_id
-        WHERE pj.user_id = %s
-          AND pj.status = 'scheduled'
-          AND pj.scheduled_time_utc > %s
-        ORDER BY pj.scheduled_time_utc
-        LIMIT 20
-    """, (user_id, now_utc), fetchall=True)
+    # Даты для верхнего списка (текущий + следующий месяц, ~60 дней)
+    start_date_free = today_user
+    end_date_free = today_user + timedelta(days=60)
 
-    text = get_text('free_dates_title', context) + "\n\n"
+    # Даты для нижнего списка (30 дней)
+    start_date_schedule = today_user
+    end_date_schedule = today_user + timedelta(days=30)
 
-    if not upcoming_jobs:
-        text += get_text('free_dates_info', context) + "\n\n"
-        text += get_text('free_dates_empty', context)
+    # --- 1. Верхняя часть (Свободные даты) ---
+
+    scheduled_jobs_60d = db_query("""
+        SELECT scheduled_time_utc 
+        FROM publication_jobs 
+        WHERE user_id = %s 
+          AND status = 'scheduled' 
+          AND scheduled_time_utc >= %s 
+          AND scheduled_time_utc < %s
+    """, (user_id, now_utc, end_date_free), fetchall=True)
+
+    scheduled_dates_set = set()
+    if scheduled_jobs_60d:
+        for job in scheduled_jobs_60d:
+            local_date = job['scheduled_time_utc'].astimezone(user_tz).date()
+            scheduled_dates_set.add(local_date)
+
+    all_dates_set = set()
+    current_date = start_date_free
+    while current_date < end_date_free:
+        all_dates_set.add(current_date)
+        current_date += timedelta(days=1)
+
+    free_dates = sorted(list(all_dates_set - scheduled_dates_set))
+
+    free_dates_str = ", ".join([d.strftime('%d/%m') for d in free_dates])
+    if not free_dates_str:
+        free_dates_str = get_text('free_dates_none_60d', context)
+
+    text = get_text('free_dates_header', context).format(free_dates_str=free_dates_str)
+    text += "--------------------\n"
+
+    # --- 2. Нижняя часть (Задачи на 30 дней) ---
+
+    text += get_text('free_dates_schedule_header_30d', context)
+
+    jobs_30_days = db_query("""
+        SELECT scheduled_time_utc, task_id, pin_duration 
+        FROM publication_jobs 
+        WHERE user_id = %s 
+          AND status = 'scheduled' 
+          AND scheduled_time_utc >= %s 
+          AND scheduled_time_utc < %s 
+        ORDER BY scheduled_time_utc
+    """, (user_id, now_utc, end_date_schedule), fetchall=True)
+
+    if not jobs_30_days:
+        text += get_text('free_dates_schedule_empty_30d', context)
     else:
-        text += get_text('free_dates_info', context) + "\n"
-
-        post_list = []
-        for job in upcoming_jobs:
+        grouped_jobs = {}
+        for job in jobs_30_days:
             local_dt = job['scheduled_time_utc'].astimezone(user_tz)
-            local_time_str = local_dt.strftime('%d.%m.%Y %H:%M')
+            date_key = local_dt.date()
 
-            task_name = job['task_name'] or "Без названия"
-            channel_username = job['channel_username'] or "неизвестный канал"
+            time_str = local_dt.strftime('%H:%M')
+            pin_str = "📌" if job['pin_duration'] > 0 else ""
+            task_id = job['task_id']
 
-            post_list.append(
-                get_text('free_dates_list_item', context).format(
-                    local_time=local_time_str,
-                    task_name=escape_markdown(task_name),  # Экранируем
-                    channel_username=escape_markdown(channel_username)
-                )
-            )
+            job_str = f"{time_str} ({pin_str}#{task_id})"
 
-        text += "\n".join(post_list)
+            if date_key not in grouped_jobs:
+                grouped_jobs[date_key] = []
+            grouped_jobs[date_key].append(job_str)
+
+        for date_key in sorted(grouped_jobs.keys()):
+            date_str = date_key.strftime('%d.%m.%Y')
+            jobs_str = "; ".join(grouped_jobs[date_key])
+            text += f"{date_str} {jobs_str}\n"
 
     await query.edit_message_text(
         text,
-        reply_markup=back_to_main_menu_keyboard(context)
+        reply_markup=back_to_main_menu_keyboard(context),
+        parse_mode='Markdown'
     )
     return FREE_DATES
 
@@ -2944,35 +3300,158 @@ def escape_markdown(text: str) -> str:
     return text
 
 
+async def calendar_weekday_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Выбор дня недели в календаре с проверкой лимитов"""
+    query = update.callback_query
+    await query.answer()
+
+    task_id = context.user_data.get('current_task_id')
+
+    try:
+        weekday = int(query.data.replace("calendar_wd_", ""))
+    except ValueError:
+        return CALENDAR_VIEW
+
+    user_tariff = context.user_data.get('tariff', 'free')
+    limits = get_tariff_limits(user_tariff)
+
+    # Сброс дат
+    db_query("DELETE FROM task_schedules WHERE task_id = %s AND schedule_date IS NOT NULL",
+             (task_id,), commit=True)
+
+    schedules = get_task_schedules(task_id)
+    selected_weekdays = list(set([s['schedule_weekday'] for s in schedules if s['schedule_weekday'] is not None]))
+
+    if weekday in selected_weekdays:
+        db_query("DELETE FROM task_schedules WHERE task_id = %s AND schedule_weekday = %s",
+                 (task_id, weekday), commit=True)
+        selected_weekdays.remove(weekday)
+        if not selected_weekdays:
+            remove_task_schedules(task_id)
+    else:
+        # --- CHECK WEEKDAY LIMITS ---
+        # Using date_slots as a proxy for max weekdays if not explicitly defined, capped at 7
+        max_weekdays = limits.get('date_slots', 7)
+        if max_weekdays > 7: max_weekdays = 7
+
+        if len(selected_weekdays) >= max_weekdays:
+            alert_text = get_text('limit_error_weekdays', context).format(
+                current=len(selected_weekdays),
+                max=max_weekdays,
+                tariff=limits['name']
+            )
+            await query.answer(alert_text, show_alert=True)
+            return CALENDAR_VIEW
+        # --- END CHECK ---
+
+        times = list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']]))
+
+        if times:
+            for time_str in times:
+                add_task_schedule(task_id, 'weekday_and_time', schedule_weekday=weekday, schedule_time=time_str)
+        else:
+            add_task_schedule(task_id, 'weekday', schedule_weekday=weekday)
+
+        selected_weekdays.append(weekday)
+
+    # UI Refresh Logic
+    user_tz_str = context.user_data.get('timezone', 'Europe/Moscow')
+    try:
+        user_tz = ZoneInfo(user_tz_str)
+    except ZoneInfoNotFoundError:
+        user_tz = ZoneInfo('UTC')
+    today_user = datetime.now(user_tz).date()
+
+    year = context.user_data.get('calendar_year', today_user.year)
+    month = context.user_data.get('calendar_month', today_user.month)
+    selected_dates = []
+
+    header_text = ""
+    if selected_weekdays:
+        try:
+            wd_names_str = get_text('calendar_weekdays_short', context)
+            wd_names = wd_names_str.split(',')
+            weekdays_str = ", ".join(
+                sorted([wd_names[day] for day in selected_weekdays], key=lambda x: wd_names.index(x)))
+            header_text = get_text('calendar_header_weekdays', context).format(weekdays_str=weekdays_str)
+        except (IndexError, AttributeError):
+            header_text = get_text('calendar_header_weekdays', context).format(
+                weekdays_str=f"{len(selected_weekdays)} days")
+
+    text = header_text
+    text += get_text('calendar_info_weekdays', context)
+    text += get_text('calendar_info_limit_slots', context).format(max_time_slots=limits['date_slots'],
+                                                                  tariff_name=limits['name'])
+    text += get_text('calendar_weekdays_note', context)
+
+    await query.edit_message_text(
+        text,
+        reply_markup=calendar_keyboard(context, year, month, selected_dates, selected_weekdays, today_user),
+        parse_mode='Markdown'
+    )
+    return await task_select_calendar(update, context)
+
+
 def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
     """Формирует текст для конструктора задач (согласно ТЗ)"""
     task_id = context.user_data.get('current_task_id')
     if not task_id:
-        return "Ошибка: ID задачи не найден."
+        return get_text('error_task_id_not_found', context)
 
     task = get_task_details(task_id)
     if not task:
-        return f"Ошибка: Задача {task_id} не найдена в БД."
+        return get_text('error_task_not_found_db', context).format(task_id=task_id)
 
     # Get channels
     channels_ids = get_task_channels(task_id)
     channels_count = len(channels_ids)
 
-    # FIXED: Count unique dates and times
+    # Suffixes
+    count_suffix = get_text('status_count_suffix', context)
+    days_suffix = get_text('status_days_suffix', context)
+    hours_suffix = get_text('status_hours_suffix', context)
+    hours_suffix_short = get_text('status_hours_suffix_short', context)
+
+    # --- НОВАЯ ЛОГИКА ОТОБРАЖЕНИЯ ДАТ И ВРЕМЕНИ ---
     schedules = get_task_schedules(task_id)
-    unique_dates = set()
-    for s in schedules:
-        if s['schedule_date']:
-            unique_dates.add(s['schedule_date'])
-    dates_count = len(unique_dates)
 
-    unique_times = set()
-    for s in schedules:
-        if s['schedule_time']:
-            unique_times.add(s['schedule_time'].strftime('%H:%M'))
-    times_count = len(unique_times)
+    # 1. Даты
+    dates_text = get_text('status_not_selected', context)
+    weekdays_text = get_text('status_not_selected', context)
 
-    # Get advertiser info - FIXED
+    unique_dates = sorted(list(set([s['schedule_date'] for s in schedules if s['schedule_date']])))
+    unique_weekdays = sorted(
+        list(set([s['schedule_weekday'] for s in schedules if s['schedule_weekday'] is not None])))  # 0 - 6
+
+    if unique_dates:
+        if len(unique_dates) > 5:
+            dates_text = get_text('status_dates_count', context).format(count=len(unique_dates), suffix=count_suffix)
+        else:
+            dates_text = "✅ " + ", ".join([d.strftime('%d.%m') for d in unique_dates])
+
+    elif unique_weekdays:
+        try:
+            wd_names_str = get_text('calendar_weekdays_short', context)
+            wd_names = wd_names_str.split(',')
+            weekdays_text = "✅ " + ", ".join([wd_names[day] for day in unique_weekdays])
+        except (IndexError, AttributeError):
+            weekdays_text = get_text('status_weekdays_count', context).format(count=len(unique_weekdays),
+                                                                              suffix=days_suffix)
+            logger.warning(f"Неверный weekday в {unique_weekdays} для task {task_id}")
+
+    # 2. Время
+    times_text = get_text('status_not_selected', context)
+    unique_times = sorted(list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']])))
+
+    if unique_times:
+        if len(unique_times) > 5:
+            times_text = get_text('status_times_count', context).format(count=len(unique_times), suffix=count_suffix)
+        else:
+            times_text = "✅ " + ", ".join(unique_times)
+
+    # --- КОНЕЦ НОВОЙ ЛОГИКИ ---
+
+    # Get advertiser info
     advertiser_text = get_text('status_not_set', context)
     if task['advertiser_user_id']:
         advertiser_user = db_query(
@@ -2982,39 +3461,59 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
         )
         if advertiser_user and advertiser_user.get('username'):
             username = advertiser_user['username']
-            # FIXED: Don't use format string, construct directly
             advertiser_text = f"✅ @{username}"
         else:
-            advertiser_text = f"✅ ID: {task['advertiser_user_id']}"
+            advertiser_text = get_text('status_advertiser_id', context).format(
+                advertiser_user_id=task['advertiser_user_id'])
 
-    # Formatting - FIXED: Removed bold markdown from task_name
     if task['task_name']:
-        task_name = task['task_name']  # No bold formatting
+        task_name = task['task_name']
     else:
         task_name = get_text('task_default_name', context)
 
     pin_text = get_text('status_no', context)
     if task['pin_duration'] > 0:
-        pin_text = f"✅ {task['pin_duration']}ч"
+        pin_text = get_text('status_pin_duration', context).format(duration=task['pin_duration'], suffix=hours_suffix)
 
     delete_text = get_text('status_no', context)
     if task['auto_delete_hours'] > 0:
-        delete_text = f"✅ {task['auto_delete_hours']}h"
+        delete_text = get_text('status_delete_duration', context).format(duration=task['auto_delete_hours'],
+                                                                         suffix=hours_suffix_short)
 
-    # FIXED: Build text without parse_mode complications
+    # --- НОВЫЙ ФОРМАТ СТАТУСОВ ---
+    status_yes = get_text('status_yes', context)  # ✅ Да
+    status_no = get_text('status_no', context)  # ❌ Нет
+
+    pin_notify_status = status_yes if task['pin_notify'] else status_no
+    report_status = status_yes if task['report_enabled'] else status_no
+    post_type_status = get_text('status_from_bot', context) if task['post_type'] == 'from_bot' else get_text(
+        'status_repost', context)
+
+    channels_status = get_text('status_dates_count', context).format(count=channels_count,
+                                                                     suffix=count_suffix) if channels_count > 0 else get_text(
+        'status_not_selected', context)
+    message_status = get_text('status_set', context) if task['content_message_id'] else get_text('status_not_set',
+                                                                                                 context)
+
+    # --- Сборка текста ---
     title = get_text('task_constructor_title', context)
-
     text = f"{title}\n\n"
     text += f"{task_name}\n"
-    text += f"📢 Каналы: {'✅ ' + str(channels_count) + ' шт.' if channels_count > 0 else get_text('status_not_selected', context)}\n"
-    text += f"📝 Сообщение: {get_text('status_set', context) if task['content_message_id'] else get_text('status_not_set', context)}\n"
-    text += f"📅 Дата: {'✅ ' + str(dates_count) + ' шт.' if dates_count > 0 else get_text('status_not_selected', context)}\n"
-    text += f"🕐 Время: {'✅ ' + str(times_count) + ' шт.' if times_count > 0 else get_text('status_not_selected', context)}\n"
-    text += f"📌 Закреп: {pin_text}\n"
-    text += f"🗑️ Автоудаление: {delete_text}\n"
-    text += f"📤 Тип поста: {get_text('status_from_bot', context) if task['post_type'] == 'from_bot' else get_text('status_repost', context)}\n"
-    text += f"📊 Отчёт: {get_text('status_yes', context) if task['report_enabled'] else get_text('status_no', context)}\n"
-    text += f"🔗 Рекламодатель: {advertiser_text}\n"
+    text += f"{get_text('header_channels', context)}{channels_status}\n"
+    text += f"{get_text('header_message', context)}{message_status}\n"
+
+    if unique_dates:
+        text += f"{get_text('header_date', context)}{dates_text}\n"
+    else:
+        text += f"{get_text('header_weekdays', context)}{weekdays_text}\n"
+
+    text += f"{get_text('header_time', context)}{times_text}\n"
+    text += f"{get_text('header_pin', context)}{pin_text}\n"
+    text += f"{get_text('header_autodelete', context)}{delete_text}\n"
+    text += f"{get_text('header_post_type', context)}{post_type_status}\n"
+    text += f"{get_text('header_pin_notify', context)}{pin_notify_status}\n"
+    text += f"{get_text('header_report', context)}{report_status}\n"
+    text += f"{get_text('header_advertiser', context)}{advertiser_text}\n"
 
     return text
 
@@ -3032,7 +3531,7 @@ async def task_constructor_entrypoint(update: Update, context: ContextTypes.DEFA
 
     # If triggered via InlineKeyboardButton
     if query:
-        await query.answer()
+        # Do not answer yet if we might send a specific error toast
         message = query.message
     else:
         message = update.message
@@ -3040,35 +3539,37 @@ async def task_constructor_entrypoint(update: Update, context: ContextTypes.DEFA
     user_id = context.user_data.get('user_id')
     user_tariff = context.user_data.get('tariff', 'free')
 
-    # --- НОВАЯ ПРОВЕРКА ЛИМИТА ЗАДАЧ ---
+    # --- CHECK TASK LIMITS ---
     limits = get_tariff_limits(user_tariff)
     max_tasks = limits['tasks']
 
     current_tasks = get_user_tasks(user_id)
     if len(current_tasks) >= max_tasks:
-        warn_text = (
-            f"❌ Достигнут лимит задач для вашего тарифа '{limits['name']}' "
-            f"({len(current_tasks)} / {max_tasks}).\n"
-            f"Удалите старые задачи или обновите тариф в /start."
+        error_text = get_text('limit_error_tasks', context).format(
+            current=len(current_tasks),
+            max=max_tasks,
+            tariff=limits['name']
         )
-        if query:
-            await query.answer(
-                f"❌ Достигнут лимит задач ({len(current_tasks)} / {max_tasks}) для тарифа '{limits['name']}'.",
-                show_alert=True
-            )
-            await query.message.reply_text(warn_text)
-        else:
-            await message.reply_text(warn_text)
-        return MAIN_MENU
 
-    # --- КОНЕЦ ПРОВЕРКИ ---
+        if query:
+            # show_alert=False puts it at the top "Loading..." bar
+            await query.answer(error_text[:200], show_alert=False)
+        else:
+            await message.reply_text(error_text)
+        return MAIN_MENU
+    # --- END CHECK ---
+
+    # Only answer the query normally if no error occurred
+    if query:
+        await query.answer()
 
     task_id = create_task(user_id)
     if not task_id:
+        error_msg = get_text('error_generic', context)
         if query:
-            await query.edit_message_text(get_text('error_db', context))
+            await query.edit_message_text(error_msg)
         else:
-            await message.reply_text(get_text('error_db', context))
+            await message.reply_text(error_msg)
         return MAIN_MENU
 
     context.user_data['current_task_id'] = task_id
@@ -3135,13 +3636,63 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    text = get_text('task_ask_message', context)
-    await query.edit_message_text(
-        text,
-        reply_markup=back_to_constructor_keyboard(context)
-    )
-    return TASK_SET_MESSAGE
+    task_id = context.user_data.get('current_task_id')
+    task = get_task_details(task_id)
 
+    if task and task['content_message_id']:
+        # Сообщение УЖЕ установлено. Показываем его.
+        text = get_text('task_message_current_prompt', context)
+
+        keyboard = [
+            [InlineKeyboardButton(get_text('task_delete_message_btn', context), callback_data="task_delete_message")],
+            [
+                InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor"),
+                InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu")
+            ]
+        ]
+
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+        try:
+            # Копируем сообщение, чтобы юзер его увидел
+            await context.bot.copy_message(
+                chat_id=query.message.chat_id,
+                from_chat_id=task['content_chat_id'],
+                message_id=task['content_message_id']
+            )
+        except Exception as e:
+            logger.warning(f"Не удалось скопировать старое сообщение для task {task_id}: {e}")
+            await query.message.reply_text(get_text('task_message_display_error', context))
+
+        return TASK_SET_MESSAGE  # Остаемся в том же состоянии, т.к. MessageHandler его поймает
+
+    else:
+        # Сообщение НЕ установлено. Просим его.
+        text = get_text('task_ask_message', context)
+        await query.edit_message_text(
+            text,
+            reply_markup=back_to_constructor_keyboard(context)
+        )
+        return TASK_SET_MESSAGE
+
+
+async def task_delete_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """(Конструктор) Удаление сохраненного сообщения"""
+    query = update.callback_query
+    await query.answer()
+
+    task_id = context.user_data.get('current_task_id')
+    if not task_id:
+        await query.edit_message_text(get_text('error_generic', context))
+        return await show_task_constructor(update, context)  # Failsafe
+
+    update_task_field(task_id, 'content_message_id', None)
+    update_task_field(task_id, 'content_chat_id', None)
+
+    await query.answer(get_text('task_message_deleted_alert', context), show_alert=True)
+
+    # Возвращаемся в конструктор
+    return await show_task_constructor(update, context)
 
 async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Получено сообщение для поста"""
@@ -3217,31 +3768,88 @@ async def task_toggle_channel(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 # --- Календарь ---
 async def task_select_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Нажата кнопка '📅 Календарь'"""
+    """Нажата кнопка '📅 Календарь' (Refreshes the view)"""
     query = update.callback_query
-    await query.answer()
+    # We do NOT call query.answer() here if it was called in the parent function (like calendar_day_select)
+    # But if called directly from menu, we need it.
+    # To be safe, we try-catch answer or check if it's a fresh call.
+    try:
+        await query.answer()
+    except:
+        pass
 
     task_id = context.user_data.get('current_task_id')
+    user_tz_str = context.user_data.get('timezone', 'Europe/Moscow')
+    user_tariff = context.user_data.get('tariff', 'free')
 
-    # Получаем выбранные даты из БД
+    try:
+        user_tz = ZoneInfo(user_tz_str)
+    except ZoneInfoNotFoundError:
+        user_tz = ZoneInfo('UTC')
+
+    # Получаем "сегодня" в таймзоне юзера
+    today_user = datetime.now(user_tz).date()
+
+    # Получаем лимиты тарифа
+    limits = get_tariff_limits(user_tariff)
+    max_time_slots = limits['date_slots']
+
+    # Получаем выбранные даты и дни недели из БД
     schedules = get_task_schedules(task_id)
     selected_dates = [s['schedule_date'].strftime('%Y-%m-%d') for s in schedules if s['schedule_date']]
+    selected_weekdays = [s['schedule_weekday'] for s in schedules if s['schedule_weekday'] is not None]  # 0-6
 
     # Устанавливаем текущий месяц
-    now = datetime.now()
-    context.user_data['calendar_year'] = now.year
-    context.user_data['calendar_month'] = now.month
+    if 'calendar_year' not in context.user_data:
+        now = datetime.now(user_tz)
+        context.user_data['calendar_year'] = now.year
+        context.user_data['calendar_month'] = now.month
 
-    # Формируем текст
-    month_year = datetime(now.year, now.month, 1).strftime("%B %Y")
-    text = get_text('calendar_title', context).format(month_year=month_year)
-    text += f"\n{get_text('calendar_selected_dates', context).format(count=len(selected_dates))}"
-    text += f"\n{get_text('calendar_weekdays_note', context)}"
+    year = context.user_data['calendar_year']
+    month = context.user_data['calendar_month']
 
-    await query.edit_message_text(
-        text,
-        reply_markup=calendar_keyboard(context, now.year, now.month, selected_dates)
-    )
+    # --- Формирование шапки ---
+    header_text = ""
+    if selected_dates:
+        dates_str = ", ".join(sorted([datetime.strptime(d, '%Y-%m-%d').strftime('%d.%m') for d in selected_dates]))
+        month_year_str = datetime(year, month, 1).strftime("%B %Y")
+        header_text = get_text('calendar_header_dates', context).format(month_year_str=month_year_str,
+                                                                        dates_str=dates_str)
+
+    elif selected_weekdays:
+        try:
+            wd_names_str = get_text('calendar_weekdays_short', context)
+            wd_names = wd_names_str.split(',')
+            weekdays_str = ", ".join(
+                sorted([wd_names[day] for day in selected_weekdays], key=lambda x: wd_names.index(x)))
+            header_text = get_text('calendar_header_weekdays', context).format(weekdays_str=weekdays_str)
+        except (IndexError, AttributeError):
+            logger.warning(f"Error parsing calendar_weekdays_short for task {task_id}")
+            header_text = get_text('calendar_header_weekdays', context).format(
+                weekdays_str=f"{len(selected_weekdays)} days")
+
+    text = header_text  # Шапка (или пусто)
+
+    # Добавляем инфо-текст
+    text += get_text('calendar_info_weekdays', context)
+    text += get_text('calendar_info_limit_slots', context).format(max_time_slots=max_time_slots,
+                                                                  tariff_name=limits['name'])
+    text += get_text('calendar_weekdays_note', context)  # Пн Вт Ср...
+
+    # --- ERROR HANDLING FIX ---
+    try:
+        await query.edit_message_text(
+            text,
+            reply_markup=calendar_keyboard(context, year, month, selected_dates, selected_weekdays, today_user),
+            parse_mode='Markdown'
+        )
+    except TelegramError as e:
+        # Ignore "Message is not modified" errors
+        if "Message is not modified" not in str(e):
+            logger.warning(f"Error updating calendar view: {e}")
+            # Optionally try to send a new message if edit failed due to age
+            # await query.message.reply_text(text, reply_markup=...)
+
     return CALENDAR_VIEW
 
 
@@ -3251,78 +3859,130 @@ async def calendar_navigation(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
 
     task_id = context.user_data.get('current_task_id')
+    user_tz_str = context.user_data.get('timezone', 'Europe/Moscow')
+    user_tariff = context.user_data.get('tariff', 'free')
+
+    try:
+        user_tz = ZoneInfo(user_tz_str)
+    except ZoneInfoNotFoundError:
+        user_tz = ZoneInfo('UTC')
+
+    today_user = datetime.now(user_tz).date()
+
+    limits = get_tariff_limits(user_tariff)
+    max_time_slots = limits['date_slots']
+
     action = query.data
 
-    year = context.user_data.get('calendar_year', datetime.now().year)
-    month = context.user_data.get('calendar_month', datetime.now().month)
+    year = context.user_data.get('calendar_year', datetime.now(user_tz).year)
+    month = context.user_data.get('calendar_month', datetime.now(user_tz).month)
 
     if action == "calendar_prev":
-        # Переход к предыдущему месяцу
         if month == 1:
             year -= 1
             month = 12
         else:
             month -= 1
     elif action == "calendar_next":
-        # Переход к следующему месяцу
         if month == 12:
             year += 1
             month = 1
         else:
             month += 1
 
-    # Сохраняем новые значения
     context.user_data['calendar_year'] = year
     context.user_data['calendar_month'] = month
 
-    # Получаем выбранные даты из БД
+    # Получаем выбранные даты и дни недели из БД
     schedules = get_task_schedules(task_id)
     selected_dates = [s['schedule_date'].strftime('%Y-%m-%d') for s in schedules if s['schedule_date']]
+    selected_weekdays = [s['schedule_weekday'] for s in schedules if s['schedule_weekday'] is not None]
 
-    # Формируем текст
-    month_year = datetime(year, month, 1).strftime("%B %Y")
-    text = get_text('calendar_title', context).format(month_year=month_year)
-    text += f"\n{get_text('calendar_selected_dates', context).format(count=len(selected_dates))}"
-    text += f"\n{get_text('calendar_weekdays_note', context)}"
+    # --- Формирование шапки ---
+    header_text = ""
+    if selected_dates:
+        dates_str = ", ".join(sorted([datetime.strptime(d, '%Y-%m-%d').strftime('%d.%m') for d in selected_dates]))
+        month_year_str = datetime(year, month, 1).strftime("%B %Y")
+        header_text = get_text('calendar_header_dates', context).format(month_year_str=month_year_str,
+                                                                        dates_str=dates_str)
 
-    await query.edit_message_text(
-        text,
-        reply_markup=calendar_keyboard(context, year, month, selected_dates)
-    )
+    elif selected_weekdays:
+        try:
+            wd_names_str = get_text('calendar_weekdays_short', context)
+            wd_names = wd_names_str.split(',')
+            weekdays_str = ", ".join(
+                sorted([wd_names[day] for day in selected_weekdays], key=lambda x: wd_names.index(x)))
+            header_text = get_text('calendar_header_weekdays', context).format(weekdays_str=weekdays_str)
+        except (IndexError, AttributeError):
+            logger.warning(f"Error parsing calendar_weekdays_short for task {task_id}")
+            header_text = get_text('calendar_header_weekdays', context).format(
+                weekdays_str=f"{len(selected_weekdays)} days")
+
+    text = header_text  # Шапка (или пусто)
+
+    # Добавляем инфо-текст
+    text += get_text('calendar_info_weekdays', context)
+    # --- ⬇️ FIXED LINE ⬇️ ---
+    text += get_text('calendar_info_limit_slots', context).format(max_time_slots=max_time_slots, tariff_name=limits['name'])
+    # --- ⬆️ FIXED LINE ⬆️ ---
+    text += get_text('calendar_weekdays_note', context)  # Пн Вт Ср...
+
+    try:
+        await query.edit_message_text(
+            text,
+            reply_markup=calendar_keyboard(context, year, month, selected_dates, selected_weekdays, today_user),
+            parse_mode='Markdown'
+        )
+    except TelegramError as e:
+        if "Message is not modified" not in str(e):
+            logger.warning(f"Error in calendar navigation: {e}")
+    return CALENDAR_VIEW
+
+async def calendar_ignore_past(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Нажатие на прошедшую дату в календаре"""
+    query = update.callback_query
+    await query.answer("Эта дата уже прошла и недоступна для выбора.", show_alert=True)
     return CALENDAR_VIEW
 
 
 async def calendar_day_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Выбор дня в календаре"""
+    """Выбор дня в календаре с проверкой лимитов"""
     query = update.callback_query
-    await query.answer()
+    # Do not await query.answer() here immediately, we might send a specific toast
 
     task_id = context.user_data.get('current_task_id')
     date_str = query.data.replace("calendar_day_", "")
 
-    # Получаем текущие расписания
+    # ... (existing deletion logic unchanged) ...
+    db_query("DELETE FROM task_schedules WHERE task_id = %s AND schedule_weekday IS NOT NULL",
+             (task_id,), commit=True)
+
     schedules = get_task_schedules(task_id)
     selected_dates = [s['schedule_date'].strftime('%Y-%m-%d') for s in schedules if s['schedule_date']]
 
-    # Проверяем лимиты тарифа
     user_tariff = context.user_data.get('tariff', 'free')
-
-    # --- ИСПРАВЛЕНИЕ ---
     limits = get_tariff_limits(user_tariff)
     max_dates = limits['date_slots']
-    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
     if date_str in selected_dates:
-        # Remove this specific date
         db_query("DELETE FROM task_schedules WHERE task_id = %s AND schedule_date = %s",
                  (task_id, date_str), commit=True)
+        # Answer normally for successful toggle
+        await query.answer()
     else:
-        # Check limit
+        # --- CHECK DATE LIMITS ---
         if len(selected_dates) >= max_dates:
-            await query.answer(f"❌ Лимит тарифа ({limits['name']}): не более {max_dates} дат")
+            alert_text = get_text('limit_error_dates', context).format(
+                current=len(selected_dates),
+                max=max_dates,
+                tariff=limits['name']
+            )
+            # show_alert=False shows it at the top
+            await query.answer(alert_text, show_alert=False)
             return CALENDAR_VIEW
+        # --- END CHECK ---
 
-        # FIXED: Add date with existing times if any
+        # ... (existing add logic unchanged) ...
         schedules = get_task_schedules(task_id)
         times = list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']]))
 
@@ -3332,24 +3992,42 @@ async def calendar_day_select(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             add_task_schedule(task_id, 'date', schedule_date=date_str)
 
-    # Обновляем календарь
-    year = context.user_data.get('calendar_year', datetime.now().year)
-    month = context.user_data.get('calendar_month', datetime.now().month)
+        # Answer normally for successful add
+        await query.answer()
+
+    # --- Обновляем календарь (Копи-паст из task_select_calendar) ---
+    user_tz_str = context.user_data.get('timezone', 'Europe/Moscow')
+    try:
+        user_tz = ZoneInfo(user_tz_str)
+    except ZoneInfoNotFoundError:
+        user_tz = ZoneInfo('UTC')
+    today_user = datetime.now(user_tz).date()
+
+    year = context.user_data.get('calendar_year', today_user.year)
+    month = context.user_data.get('calendar_month', today_user.month)
 
     schedules = get_task_schedules(task_id)
-    # Получаем УНИКАЛЬНЫЕ даты
-    selected_dates = list(set([s['schedule_date'].strftime('%Y-%m-%d') for s in schedules if s['schedule_date']]))
+    selected_dates = [s['schedule_date'].strftime('%Y-%m-%d') for s in schedules if s['schedule_date']]
+    selected_weekdays = []
 
-    month_year = datetime(year, month, 1).strftime("%B %Y")
-    text = get_text('calendar_title', context).format(month_year=month_year)
-    text += f"\n{get_text('calendar_selected_dates', context).format(count=len(selected_dates))}"
-    text += f"\n{get_text('calendar_weekdays_note', context)}"
+    header_text = ""
+    if selected_dates:
+        dates_str = ", ".join(sorted([datetime.strptime(d, '%Y-%m-%d').strftime('%d.%m') for d in selected_dates]))
+        month_year_str = datetime(year, month, 1).strftime("%B %Y")
+        header_text = get_text('calendar_header_dates', context).format(month_year_str=month_year_str,
+                                                                        dates_str=dates_str)
+
+    text = header_text
+    text += get_text('calendar_info_weekdays', context)
+    text += get_text('calendar_info_limit_slots', context).format(max_time_slots=max_dates, tariff_name=limits['name'])
+    text += get_text('calendar_weekdays_note', context)
 
     await query.edit_message_text(
         text,
-        reply_markup=calendar_keyboard(context, year, month, selected_dates)
+        reply_markup=calendar_keyboard(context, year, month, selected_dates, selected_weekdays, today_user),
+        parse_mode='Markdown'
     )
-    return CALENDAR_VIEW
+    return await task_select_calendar(update, context)
 
 
 async def calendar_select_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3393,22 +4071,39 @@ async def calendar_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     task_id = context.user_data.get('current_task_id')
 
-    # Удаляем все расписания
     remove_task_schedules(task_id)
 
-    # Обновляем календарь
-    year = context.user_data.get('calendar_year', datetime.now().year)
-    month = context.user_data.get('calendar_month', datetime.now().month)
+    # --- Обновляем календарь (Копи-паст из task_select_calendar) ---
+    user_tz_str = context.user_data.get('timezone', 'Europe/Moscow')
+    user_tariff = context.user_data.get('tariff', 'free')
+    try:
+        user_tz = ZoneInfo(user_tz_str)
+    except ZoneInfoNotFoundError:
+        user_tz = ZoneInfo('UTC')
+    today_user = datetime.now(user_tz).date()
 
-    month_year = datetime(year, month, 1).strftime("%B %Y")
-    text = get_text('calendar_title', context).format(month_year=month_year)
-    text += f"\n{get_text('calendar_selected_dates', context).format(count=0)}"
-    text += f"\n{get_text('calendar_weekdays_note', context)}"
+    limits = get_tariff_limits(user_tariff)
+    max_time_slots = limits['date_slots']
 
-    await query.edit_message_text(
-        text,
-        reply_markup=calendar_keyboard(context, year, month, [])
-    )
+    year = context.user_data.get('calendar_year', today_user.year)
+    month = context.user_data.get('calendar_month', today_user.month)
+
+    text = ""  # Шапка пустая
+    text += get_text('calendar_info_weekdays', context)
+    # --- ⬇️ FIXED LINE ⬇️ ---
+    text += get_text('calendar_info_limit_slots', context).format(max_time_slots=max_time_slots, tariff_name=limits['name'])
+    # --- ⬆️ FIXED LINE ⬆️ ---
+    text += get_text('calendar_weekdays_note', context)
+
+    try:
+        await query.edit_message_text(
+            text,
+            reply_markup=calendar_keyboard(context, year, month, [], [], today_user),
+            parse_mode='Markdown'
+        )
+    except TelegramError as e:
+        if "Message is not modified" not in str(e):
+            logger.warning(f"Error in calendar reset: {e}")
     return CALENDAR_VIEW
 
 
@@ -3448,67 +4143,63 @@ async def task_select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def time_slot_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Выбор временного слота"""
+    """Выбор временного слота с проверкой лимитов"""
     query = update.callback_query
-    await query.answer()
+    # Do not answer yet
 
     task_id = context.user_data.get('current_task_id')
     time_str = query.data.replace("time_select_", "")
 
-    # Получаем текущие расписания
     schedules = get_task_schedules(task_id)
     selected_times = list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']]))
 
-    # Проверяем лимиты тарифа
     user_tariff = context.user_data.get('tariff', 'free')
-
-    # --- ИСПРАВЛЕНИЕ ---
     limits = get_tariff_limits(user_tariff)
     max_slots = limits['time_slots']
-    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
     if time_str in selected_times:
         # Удаляем время из всех расписаний
         db_query("DELETE FROM task_schedules WHERE task_id = %s AND schedule_time = %s",
                  (task_id, time_str), commit=True)
+        await query.answer()
     else:
-        # Check limit first
+        # --- CHECK TIME LIMITS ---
         if len(selected_times) >= max_slots:
-            await query.answer(f"❌ Лимит тарифа ({limits['name']}): не более {max_slots} временных слотов")
+            alert_text = get_text('limit_error_times', context).format(
+                current=len(selected_times),
+                max=max_slots,
+                tariff=limits['name']
+            )
+            # show_alert=False shows it at the top
+            await query.answer(alert_text, show_alert=False)
             return TIME_SELECTION
+        # --- END CHECK ---
 
-        # FIXED: Clear existing schedules and recreate properly
-        # Remove all existing schedules for this task
+        # ... (existing add logic unchanged) ...
         remove_task_schedules(task_id)
-
-        # Get dates from the schedules we just saved before deletion
         dates = [s for s in schedules if s['schedule_date']]
-
-        # Add back all dates with all selected times including the new one
         all_times = selected_times + [time_str]
 
         if dates:
-            for date_schedule in dates:
+            unique_dates_data = {d['schedule_date'] for d in dates}
+            for date_val in unique_dates_data:
                 for time in all_times:
-                    add_task_schedule(task_id, 'datetime',
-                                      schedule_date=date_schedule['schedule_date'],
-                                      schedule_time=time)
+                    add_task_schedule(task_id, 'datetime', schedule_date=date_val, schedule_time=time)
         else:
-            # If no dates, just add times
             for time in all_times:
                 add_task_schedule(task_id, 'time', schedule_time=time)
 
-    # Обновляем интерфейс
+        await query.answer()
+
+    # Update UI
     schedules = get_task_schedules(task_id)
     selected_times = list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']]))
 
     user_tz = context.user_data.get('timezone', 'Europe/Moscow')
     text = get_text('time_selection_title', context)
     text += f"\n{get_text('time_tz_info', context).format(timezone=user_tz)}"
-    # --- ИСПРАВЛЕНИЕ ---
     text += f"\n{get_text('time_slots_limit', context).format(slots=max_slots)} (Тариф: {limits['name']})"
     text += f"\n{get_text('time_selected_slots', context).format(count=len(selected_times), slots=max_slots)}"
-    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
     await query.edit_message_text(
         text,
@@ -3646,7 +4337,7 @@ async def time_custom(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def time_receive_custom(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Получение своего времени"""
+    """Получение своего времени с проверкой лимитов"""
     task_id = context.user_data.get('current_task_id')
     if not task_id:
         await update.message.reply_text(get_text('error_generic', context))
@@ -3654,47 +4345,43 @@ async def time_receive_custom(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     time_str = update.message.text.strip()
 
-    # Проверяем формат времени
+    # Regex check
     time_pattern = re.compile(r'^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$')
     if not time_pattern.match(time_str):
         await update.message.reply_text(get_text('time_invalid_format', context))
         return TASK_SET_CUSTOM_TIME
 
-    # Форматируем время (добавляем ведущие нули)
     hours, minutes = time_str.split(':')
     time_str = f"{int(hours):02d}:{int(minutes):02d}"
 
-    # Получаем текущие расписания
     schedules = get_task_schedules(task_id)
     selected_times = list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']]))
 
-    # Проверяем лимиты тарифа
     user_tariff = context.user_data.get('tariff', 'free')
-    # --- ИСПРАВЛЕНИЕ ---
     limits = get_tariff_limits(user_tariff)
     max_slots = limits['time_slots']
-    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
     if time_str not in selected_times:
-        # Добавляем время (если не превышен лимит)
+        # --- CHECK TIME LIMITS ---
         if len(selected_times) >= max_slots:
-            await update.message.reply_text(f"❌ Лимит тарифа ({limits['name']}): не более {max_slots} временных слотов")
+            error_text = get_text('limit_error_times', context).format(
+                current=len(selected_times),
+                max=max_slots,
+                tariff=limits['name']
+            )
+            await update.message.reply_text(error_text)
             return TASK_SET_CUSTOM_TIME
+        # --- END CHECK ---
 
-        # Добавляем время ко всем выбранным датам
         dates = [s for s in schedules if s['schedule_date']]
         if dates:
-            for date_schedule in dates:
-                add_task_schedule(task_id, 'datetime',
-                                  schedule_date=date_schedule['schedule_date'],
-                                  schedule_time=time_str)
+            unique_dates_data = {d['schedule_date'] for d in dates}
+            for date_val in unique_dates_data:
+                add_task_schedule(task_id, 'datetime', schedule_date=date_val, schedule_time=time_str)
         else:
-            # Если нет дат, добавляем только время
             add_task_schedule(task_id, 'time', schedule_time=time_str)
 
     await update.message.reply_text(get_text('time_saved', context))
-
-    # Возвращаемся в конструктор
     return await show_task_constructor(update, context)
 
 
@@ -3853,7 +4540,10 @@ async def task_set_pin_notify(update: Update, context: ContextTypes.DEFAULT_TYPE
     new_value = not task['pin_notify']
     update_task_field(task_id, 'pin_notify', new_value)
 
-    await query.answer(f"Пуш уведомление: {'✅ Включено' if new_value else '❌ Выключено'}")
+    status_text = get_text('status_yes', context) if new_value else get_text('status_no', context)
+    alert_text = get_text('alert_pin_notify_status', context).format(status=status_text)
+    await query.answer(alert_text)
+
     return await show_task_constructor(update, context)
 
 
@@ -3869,7 +4559,10 @@ async def task_set_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_value = not task['report_enabled']
     update_task_field(task_id, 'report_enabled', new_value)
 
-    await query.answer(f"Отчёт: {'✅ Включен' if new_value else '❌ Выключен'}")
+    status_text = get_text('status_yes', context) if new_value else get_text('status_no', context)
+    alert_text = get_text('alert_report_status', context).format(status=status_text)
+    await query.answer(alert_text)
+
     return await show_task_constructor(update, context)
 
 
@@ -3885,8 +4578,10 @@ async def task_set_post_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
     new_value = 'repost' if task['post_type'] == 'from_bot' else 'from_bot'
     update_task_field(task_id, 'post_type', new_value)
 
-    type_text = "🤖 От бота" if new_value == 'from_bot' else "↪️ Репост"
-    await query.answer(f"Тип поста: {type_text}")
+    type_text = get_text('status_from_bot', context) if new_value == 'from_bot' else get_text('status_repost', context)
+    alert_text = get_text('alert_post_type_status', context).format(status=type_text)
+    await query.answer(alert_text)
+
     return await show_task_constructor(update, context)
 
 
@@ -4808,7 +5503,7 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
 
 # --- 6. Обработчик добавления/удаления бота ---
 async def my_chat_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик добавления/удаления бота в канал/чат"""
+    """Обработчик добавления/удаления бота в канал/чат с проверкой лимитов"""
     try:
         member_update = update.my_chat_member
         if not member_update:
@@ -4820,10 +5515,42 @@ async def my_chat_member_handler(update: Update, context: ContextTypes.DEFAULT_T
 
         user_settings = get_user_settings(user.id)
         lang = user_settings.get('language_code', 'en')
+        tariff_key = user_settings.get('tariff', 'free')
 
-        lang_texts = TEXTS.get(lang, TEXTS['en'])
+        # Helper specifically for this handler since context.user_data might be empty
+        def local_get_text(key):
+            return TEXTS.get(lang, TEXTS['en']).get(key, TEXTS['en'].get(key))
 
         if new_status == "administrator":
+            # --- CHECK CHANNEL LIMITS ---
+            limits = get_tariff_limits(tariff_key)
+            max_channels = limits.get('channels', 1)
+
+            # Get current active channels count
+            current_channels = get_user_channels(user.id)
+
+            # Check if this specific channel is already in the list (re-adding doesn't count as new)
+            is_existing = any(c['channel_id'] == chat.id for c in current_channels)
+
+            if not is_existing and len(current_channels) >= max_channels:
+                # Limit reached
+                logger.warning(f"Channel limit reached for user {user.id}. Leaving chat {chat.id}")
+                try:
+                    # Leave the chat
+                    await context.bot.leave_chat(chat.id)
+
+                    # Notify user
+                    error_text = local_get_text('limit_error_channels').format(
+                        current=len(current_channels),
+                        max=max_channels,
+                        tariff=limits['name']
+                    )
+                    await context.bot.send_message(chat_id=user.id, text=error_text)
+                except Exception as e:
+                    logger.error(f"Failed to handle channel limit enforcement: {e}")
+                return
+            # --- END CHECK ---
+
             add_channel(
                 user_id=user.id,
                 channel_id=chat.id,
@@ -4831,25 +5558,20 @@ async def my_chat_member_handler(update: Update, context: ContextTypes.DEFAULT_T
                 username=chat.username
             )
             try:
-                text = lang_texts.get('channel_added', TEXTS['en']['channel_added']).format(title=chat.title)
+                text = local_get_text('channel_added').format(title=chat.title)
                 await context.bot.send_message(chat_id=user.id, text=text)
-            except (TelegramError, Forbidden): (
-                    logger.warning(
-                        lang_texts.get('error_notify_user', TEXTS['en']['error_notify_user']).format(user_id=user.id) + f" (Чат: {chat.title})"
-                    )
-            )
+            except (TelegramError, Forbidden):
+                logger.warning(f"Could not notify user {user.id}")
 
             logger.info(f"Бот добавлен в {chat.title} (ID: {chat.id}) пользователем {user.id}")
 
         elif new_status in ["left", "kicked"]:
             deactivate_channel(chat.id)
             try:
-                text = lang_texts.get('channel_removed', TEXTS['en']['channel_removed']).format(title=chat.title)
+                text = local_get_text('channel_removed').format(title=chat.title)
                 await context.bot.send_message(chat_id=user.id, text=text)
             except (TelegramError, Forbidden):
-                logger.warning(
-                    TEXTS['en']['error_notify_user'].format(user_id=user.id, action="remove channel")
-                )
+                pass
             logger.info(f"Бот удален из {chat.title} (ID: {chat.id})")
 
     except Exception as e:
@@ -5037,6 +5759,7 @@ def main():
         # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
         TASK_SET_MESSAGE: [
             MessageHandler(filters.ALL & ~filters.COMMAND, task_receive_message),
+            CallbackQueryHandler(task_delete_message, pattern="^task_delete_message$"),  # <-- ДОБАВЛЕНО
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
         ],
@@ -5064,11 +5787,13 @@ def main():
             CallbackQueryHandler(calendar_navigation, pattern="^calendar_prev$"),
             CallbackQueryHandler(calendar_navigation, pattern="^calendar_next$"),
             CallbackQueryHandler(calendar_day_select, pattern="^calendar_day_"),
-            CallbackQueryHandler(calendar_select_all, pattern="^calendar_select_all$"),
+            CallbackQueryHandler(calendar_weekday_select, pattern="^calendar_wd_"),  # <-- ДОБАВЛЕНО
+            CallbackQueryHandler(calendar_ignore_past, pattern="^calendar_ignore_past$"),  # <-- ДОБАВЛЕНО
+            # CallbackQueryHandler(calendar_select_all, pattern="^calendar_select_all$"), # <-- УДАЛЕНО (или закомментировано)
             CallbackQueryHandler(calendar_reset, pattern="^calendar_reset$"),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
-            reply_button_handler  # <--- ДОБАВЛЕНО
+            reply_button_handler
         ],
         TIME_SELECTION: [
             CallbackQueryHandler(time_slot_select, pattern="^time_select_"),
