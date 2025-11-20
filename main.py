@@ -2203,25 +2203,49 @@ def determine_task_status_color(task_id: int, db_status: str) -> str:
     # Или просто: если статус Active, но нет Scheduled -> значит "Завершается" (ждет удалений или просто висит)
     return '🟡'
 
+def get_or_create_task_id(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """
+    Получает ID текущей задачи. Если задачи нет (виртуальный черновик),
+    создает реальную запись в БД прямо сейчас.
+    """
+    task_id = context.user_data.get('current_task_id')
+    if task_id:
+        return task_id
+
+    # Задачи нет, создаем её сейчас (Lazy creation)
+    new_task_id = create_task(user_id)
+    if new_task_id:
+        context.user_data['current_task_id'] = new_task_id
+        logger.info(f"Lazy creation: Created task {new_task_id} for user {user_id}")
+    return new_task_id
 
 
 def refresh_task_jobs(task_id: int, context: ContextTypes.DEFAULT_TYPE):
     """
-    Перезапускает планировщик для задачи, если она активна.
-    Используется при изменении времени/даты "на лету".
+    Принудительно обновляет планировщик Telegram (JobQueue) для указанной задачи.
+    Должна вызываться ПОСЛЕ сохранения изменений в БД.
     """
+    if not task_id:
+        return
+
+    # Получаем актуальное состояние из БД
     task = get_task_details(task_id)
+
+    # Если задачи нет или она не активна, просто выходим.
+    # (Если пользователь редактирует неактивную задачу, Jobs создавать не надо).
     if not task or task['status'] != 'active':
         return
 
-    logger.info(f"Hot-reload scheduler for active task {task_id}")
+    logger.info(f"HOT RELOAD: Обновление планировщика для активной задачи {task_id}")
 
-    # 1. Отменяем старые джобы
+    # 1. Удаляем старые задания из очереди
     cancel_task_jobs(task_id, context)
 
-    # 2. Создаем новые
+    # 2. Загружаем настройки юзера (часовой пояс важен)
     user_settings = get_user_settings(task['user_id'])
     user_tz = user_settings.get('timezone', 'Europe/Moscow')
+
+    # 3. Создаем новые задания на основе обновленных данных в БД
     create_publication_jobs_for_task(task_id, user_tz, context.application)
 
 
@@ -3786,19 +3810,63 @@ async def calendar_weekday_select(update: Update, context: ContextTypes.DEFAULT_
     return await task_select_calendar(update, context)
 
 
+async def task_constructor_entrypoint(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Точка входа в 'Новая задача' (кнопка 'nav_new_task'). Больше НЕ создает задачу в БД сразу."""
+    user_id = update.effective_user.id
+    query = update.callback_query
+
+    if query:
+        message = query.message
+    else:
+        message = update.message
+
+    user_tariff = context.user_data.get('tariff', 'free')
+    limits = get_tariff_limits(user_tariff)
+    max_tasks = limits['tasks']
+    current_tasks = get_user_tasks(user_id)
+
+    # Проверка лимитов остается
+    if len(current_tasks) >= max_tasks:
+        error_text = get_text('limit_error_tasks', context).format(
+            current=len(current_tasks), max=max_tasks, tariff=limits['name']
+        )
+        if query:
+            await query.answer(error_text[:200], show_alert=False)
+        else:
+            await message.reply_text(error_text)
+        return MAIN_MENU
+
+    if query:
+        await query.answer()
+
+    # --- ГЛАВНОЕ ИЗМЕНЕНИЕ: Очищаем ID, но НЕ вызываем create_task ---
+    if 'current_task_id' in context.user_data:
+        del context.user_data['current_task_id']
+
+    # Мы просто показываем конструктор. Он сам разберется, что ID нет.
+    return await show_task_constructor(update, context)
+
+
 def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
-    """Формирует текст для конструктора задач (согласно ТЗ)"""
+    """Формирует текст конструктора. Умеет работать с 'виртуальной' задачей (Draft)."""
     task_id = context.user_data.get('current_task_id')
+
+    # Если ID нет, формируем заглушку "Черновик"
     if not task_id:
-        return get_text('error_task_id_not_found', context)
-
-    task = get_task_details(task_id)
-    if not task:
-        return get_text('error_task_not_found_db', context).format(task_id=task_id)
-
-    # Get channels
-    channels_ids = get_task_channels(task_id)
-    channels_count = len(channels_ids)
+        task = {
+            'task_name': None, 'status': 'inactive', 'content_message_id': None,
+            'pin_duration': 0, 'auto_delete_hours': 0, 'pin_notify': False,
+            'report_enabled': False, 'post_type': 'from_bot', 'advertiser_user_id': None
+        }
+        channels_count = 0
+        schedules = []
+    else:
+        task = get_task_details(task_id)
+        if not task:
+            return get_text('error_task_not_found_db', context).format(task_id=task_id)
+        channels_ids = get_task_channels(task_id)
+        channels_count = len(channels_ids)
+        schedules = get_task_schedules(task_id)
 
     # Suffixes
     count_suffix = get_text('status_count_suffix', context)
@@ -3806,52 +3874,44 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
     hours_suffix = get_text('status_hours_suffix', context)
     hours_suffix_short = get_text('status_hours_suffix_short', context)
 
-    # ОПРЕДЕЛЯЕМ СТАТУС (Верхняя строка)
-    status_label = get_text('task_status_label', context)  # "Состояние: "
+    # ОПРЕДЕЛЯЕМ СТАТУС
+    status_label = get_text('task_status_label', context)
     if task['status'] == 'active':
         status_val = f"🟢 {get_text('status_text_active', context)}"
     else:
         status_val = f"🔴 {get_text('status_text_inactive', context)}"
 
-    # ... (сборка текста) ...
     title = get_text('task_constructor_title', context)
     text = f"{title}\n"
-    text += f"**{status_label}{status_val}**\n\n"  # <--- ДОБАВЛЕНО ВВЕРХУ
+    text += f"**{status_label}{status_val}**\n\n"
 
-    # Имя задачи (полное или дефолтное)
     display_name = task['task_name'] if task['task_name'] else get_text('task_default_name', context)
-    text += f"📝 {display_name}\n"  # Убрано "Название:", просто иконка и текст
+    text += f"📝 {display_name}\n"
 
-    # --- НОВАЯ ЛОГИКА ОТОБРАЖЕНИЯ ДАТ И ВРЕМЕНИ ---
-    schedules = get_task_schedules(task_id)
-
-    # 1. Даты
+    # Логика отображения дат/времени
     dates_text = get_text('status_not_selected', context)
     weekdays_text = get_text('status_not_selected', context)
+    times_text = get_text('status_not_selected', context)
 
-    unique_dates = sorted(list(set([s['schedule_date'] for s in schedules if s['schedule_date']])))
+    unique_dates = sorted(list(set([s['schedule_date'] for s in schedules if s.get('schedule_date')])))
     unique_weekdays = sorted(
-        list(set([s['schedule_weekday'] for s in schedules if s['schedule_weekday'] is not None])))  # 0 - 6
+        list(set([s['schedule_weekday'] for s in schedules if s.get('schedule_weekday') is not None])))
+    unique_times = sorted(
+        list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s.get('schedule_time')])))
 
     if unique_dates:
         if len(unique_dates) > 5:
             dates_text = get_text('status_dates_count', context).format(count=len(unique_dates), suffix=count_suffix)
         else:
             dates_text = "✅ " + ", ".join([d.strftime('%d.%m') for d in unique_dates])
-
     elif unique_weekdays:
         try:
             wd_names_str = get_text('calendar_weekdays_short', context)
             wd_names = wd_names_str.split(',')
             weekdays_text = "✅ " + ", ".join([wd_names[day] for day in unique_weekdays])
-        except (IndexError, AttributeError):
+        except:
             weekdays_text = get_text('status_weekdays_count', context).format(count=len(unique_weekdays),
                                                                               suffix=days_suffix)
-            logger.warning(f"Неверный weekday в {unique_weekdays} для task {task_id}")
-
-    # 2. Время
-    times_text = get_text('status_not_selected', context)
-    unique_times = sorted(list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']])))
 
     if unique_times:
         if len(unique_times) > 5:
@@ -3859,19 +3919,13 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
         else:
             times_text = "✅ " + ", ".join(unique_times)
 
-    # --- КОНЕЦ НОВОЙ ЛОГИКИ ---
-
-    # Get advertiser info
+    # Advertiser
     advertiser_text = get_text('status_not_set', context)
     if task['advertiser_user_id']:
-        advertiser_user = db_query(
-            "SELECT username FROM users WHERE user_id = %s",
-            (task['advertiser_user_id'],),
-            fetchone=True
-        )
+        advertiser_user = db_query("SELECT username FROM users WHERE user_id = %s", (task['advertiser_user_id'],),
+                                   fetchone=True)
         if advertiser_user and advertiser_user.get('username'):
-            username = advertiser_user['username']
-            advertiser_text = f"✅ @{username}"
+            advertiser_text = f"✅ @{advertiser_user['username']}"
         else:
             advertiser_text = get_text('status_advertiser_id', context).format(
                 advertiser_user_id=task['advertiser_user_id'])
@@ -3890,10 +3944,8 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
         delete_text = get_text('status_delete_duration', context).format(duration=task['auto_delete_hours'],
                                                                          suffix=hours_suffix_short)
 
-    # --- НОВЫЙ ФОРМАТ СТАТУСОВ ---
-    status_yes = get_text('status_yes', context)  # ✅ Да
-    status_no = get_text('status_no', context)  # ❌ Нет
-
+    status_yes = get_text('status_yes', context)
+    status_no = get_text('status_no', context)
     pin_notify_status = status_yes if task['pin_notify'] else status_no
     report_status = status_yes if task['report_enabled'] else status_no
     post_type_status = get_text('status_from_bot', context) if task['post_type'] == 'from_bot' else get_text(
@@ -3905,10 +3957,8 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
     message_status = get_text('status_set', context) if task['content_message_id'] else get_text('status_not_set',
                                                                                                  context)
 
-    # --- Сборка текста ---
-    title = get_text('task_constructor_title', context)
-    text = f"{title}\n\n"
-    text += f"{task_name}\n"
+    # Сборка финального текста
+    text = f"{title}\n\n{task_name}\n"
     text += f"{get_text('header_channels', context)}{channels_status}\n"
     text += f"{get_text('header_message', context)}{message_status}\n"
 
@@ -3936,53 +3986,39 @@ async def show_task_constructor(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def task_constructor_entrypoint(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Точка входа в 'Новая задача' (кнопка 'nav_new_task')"""
+    """Точка входа в 'Новая задача' (кнопка 'nav_new_task'). Больше НЕ создает задачу в БД сразу."""
+    user_id = update.effective_user.id
     query = update.callback_query
 
-    # If triggered via InlineKeyboardButton
     if query:
-        # Do not answer yet if we might send a specific error toast
         message = query.message
     else:
         message = update.message
 
-    user_id = context.user_data.get('user_id')
     user_tariff = context.user_data.get('tariff', 'free')
-
-    # --- CHECK TASK LIMITS ---
     limits = get_tariff_limits(user_tariff)
     max_tasks = limits['tasks']
-
     current_tasks = get_user_tasks(user_id)
+
+    # Проверка лимитов остается
     if len(current_tasks) >= max_tasks:
         error_text = get_text('limit_error_tasks', context).format(
-            current=len(current_tasks),
-            max=max_tasks,
-            tariff=limits['name']
+            current=len(current_tasks), max=max_tasks, tariff=limits['name']
         )
-
         if query:
-            # show_alert=False puts it at the top "Loading..." bar
             await query.answer(error_text[:200], show_alert=False)
         else:
             await message.reply_text(error_text)
         return MAIN_MENU
-    # --- END CHECK ---
 
-    # Only answer the query normally if no error occurred
     if query:
         await query.answer()
 
-    task_id = create_task(user_id)
-    if not task_id:
-        error_msg = get_text('error_generic', context)
-        if query:
-            await query.edit_message_text(error_msg)
-        else:
-            await message.reply_text(error_msg)
-        return MAIN_MENU
+    # --- ГЛАВНОЕ ИЗМЕНЕНИЕ: Очищаем ID, но НЕ вызываем create_task ---
+    if 'current_task_id' in context.user_data:
+        del context.user_data['current_task_id']
 
-    context.user_data['current_task_id'] = task_id
+    # Мы просто показываем конструктор. Он сам разберется, что ID нет.
     return await show_task_constructor(update, context)
 
 
@@ -4106,8 +4142,12 @@ async def task_delete_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Получено сообщение для поста"""
-    task_id = context.user_data.get('current_task_id')
+    """Получено сообщение для поста. Сохраняет ID и обновляет планировщик."""
+    user_id = update.message.from_user.id
+
+    # 1. Lazy Creation: Создаем задачу в БД
+    task_id = get_or_create_task_id(user_id, context)
+
     if not task_id:
         await update.message.reply_text(get_text('error_generic', context))
         return TASK_CONSTRUCTOR
@@ -4116,6 +4156,7 @@ async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYP
     content_message_id = update.message.message_id
     content_chat_id = update.message.chat_id
 
+    # 2. Пишем изменения в БД
     update_task_field(task_id, 'content_message_id', content_message_id)
     update_task_field(task_id, 'content_chat_id', content_chat_id)
 
@@ -4123,16 +4164,18 @@ async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYP
     task = get_task_details(task_id)
     # Если имя еще не задано (или дефолтное/пустое), генерируем из текста
     if not task['task_name']:
-        # Берем текст сообщения или подпись
         msg_text = update.message.text or update.message.caption or "Фото/Видео без текста"
-        smart_name = generate_smart_name(msg_text, context, limit=3)  # Первые 3 слова по ТЗ
+        smart_name = generate_smart_name(msg_text, context, limit=3)
         update_task_field(task_id, 'task_name', smart_name)
         await update.message.reply_text(get_text('task_message_saved', context) + f"\n📝 Авто-название: {smart_name}")
     else:
         await update.message.reply_text(get_text('task_message_saved', context))
 
-    # Возвращаемся в конструктор (Если задача активна - обновляем джобы)
+    # 3. Hot Reload: Обновляем планировщик ПОСЛЕ записи
+    # Это критично, так как `publication_jobs` хранят ссылку на `content_message_id`.
+    # Пересоздание jobs обновит эти ссылки.
     refresh_task_jobs(task_id, context)
+
     return await show_task_constructor(update, context)
 
 
@@ -4164,21 +4207,27 @@ async def task_select_channels(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def task_toggle_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Переключение выбора канала"""
+    """Переключение канала. Создает задачу и обновляет планировщик."""
     query = update.callback_query
-    await query.answer()
+    user_id = query.from_user.id
 
-    task_id = context.user_data.get('current_task_id')
+    # 1. Создаем задачу
+    task_id = get_or_create_task_id(user_id, context)
     channel_id = int(query.data.replace("channel_toggle_", ""))
 
     selected_channels = get_task_channels(task_id)
 
+    # 2. Пишем в БД
     if channel_id in selected_channels:
         remove_task_channel(task_id, channel_id)
     else:
         add_task_channel(task_id, channel_id)
 
-    # Обновляем клавиатуру
+    # 3. Обновляем планировщик
+    refresh_task_jobs(task_id, context)
+
+    # UI Update
+    await query.answer()
     selected_channels = get_task_channels(task_id)
     text = "📢 Выберите каналы для публикации:\n(Нажмите на канал чтобы выбрать/отменить)"
     await query.edit_message_text(
@@ -4368,14 +4417,16 @@ async def calendar_ignore_past(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def calendar_day_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Выбор дня в календаре с проверкой лимитов"""
+    """Выбор дня в календаре с проверкой лимитов и мгновенным обновлением планировщика."""
     query = update.callback_query
-    # Do not await query.answer() here immediately, we might send a specific toast
+    user_id = query.from_user.id
 
-    task_id = context.user_data.get('current_task_id')
+    # 1. Lazy Creation: Создаем задачу в БД
+    task_id = get_or_create_task_id(user_id, context)
+
     date_str = query.data.replace("calendar_day_", "")
 
-    # ... (existing deletion logic unchanged) ...
+    # Очищаем дни недели, так как пользователь перешел к выбору конкретных дат
     db_query("DELETE FROM task_schedules WHERE task_id = %s AND schedule_weekday IS NOT NULL",
              (task_id,), commit=True)
 
@@ -4387,25 +4438,28 @@ async def calendar_day_select(update: Update, context: ContextTypes.DEFAULT_TYPE
     max_dates = limits['date_slots']
 
     if date_str in selected_dates:
+        # --- УДАЛЕНИЕ ДАТЫ ---
         db_query("DELETE FROM task_schedules WHERE task_id = %s AND schedule_date = %s",
                  (task_id, date_str), commit=True)
-        # Answer normally for successful toggle
         await query.answer()
     else:
-        # --- CHECK DATE LIMITS ---
+        # --- ДОБАВЛЕНИЕ ДАТЫ ---
+        # Проверка лимитов
         if len(selected_dates) >= max_dates:
             alert_text = get_text('limit_error_dates', context).format(
                 current=len(selected_dates),
                 max=max_dates,
                 tariff=limits['name']
             )
-            # show_alert=False shows it at the top
             await query.answer(alert_text, show_alert=False)
+            # Возвращаем то же состояние, чтобы не ломать навигацию
+            # Но UI обновлять не нужно, так как ничего не изменилось
             return CALENDAR_VIEW
-        # --- END CHECK ---
 
-        # ... (existing add logic unchanged) ...
-        schedules = get_task_schedules(task_id)
+            # Добавление
+        # Проверяем, выбрано ли уже время. Если да, добавляем дату с привязкой к этому времени.
+        # (schedules уже загружен выше, но после удаления weekdays он мог устареть, лучше проверить times)
+        # Но мы берем times из schedules, полученных ДО удаления даты, это корректно.
         times = list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']]))
 
         if times:
@@ -4414,41 +4468,13 @@ async def calendar_day_select(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             add_task_schedule(task_id, 'date', schedule_date=date_str)
 
-        # Answer normally for successful add
         await query.answer()
 
-    # --- Обновляем календарь (Копи-паст из task_select_calendar) ---
-    user_tz_str = context.user_data.get('timezone', 'Europe/Moscow')
-    try:
-        user_tz = ZoneInfo(user_tz_str)
-    except ZoneInfoNotFoundError:
-        user_tz = ZoneInfo('UTC')
-    today_user = datetime.now(user_tz).date()
+    # 2. Hot Reload: Обновляем планировщик ПОСЛЕ записи
+    refresh_task_jobs(task_id, context)
 
-    year = context.user_data.get('calendar_year', today_user.year)
-    month = context.user_data.get('calendar_month', today_user.month)
-
-    schedules = get_task_schedules(task_id)
-    selected_dates = [s['schedule_date'].strftime('%Y-%m-%d') for s in schedules if s['schedule_date']]
-    selected_weekdays = []
-
-    header_text = ""
-    if selected_dates:
-        dates_str = ", ".join(sorted([datetime.strptime(d, '%Y-%m-%d').strftime('%d.%m') for d in selected_dates]))
-        month_year_str = datetime(year, month, 1).strftime("%B %Y")
-        header_text = get_text('calendar_header_dates', context).format(month_year_str=month_year_str,
-                                                                        dates_str=dates_str)
-
-    text = header_text
-    text += get_text('calendar_info_weekdays', context)
-    text += get_text('calendar_info_limit_slots', context).format(max_time_slots=max_dates, tariff_name=limits['name'])
-    text += get_text('calendar_weekdays_note', context)
-
-    await query.edit_message_text(
-        text,
-        reply_markup=calendar_keyboard(context, year, month, selected_dates, selected_weekdays, today_user),
-        parse_mode='Markdown'
-    )
+    # 3. Обновление UI (перерисовываем календарь)
+    # Используем функцию task_select_calendar, так как она содержит логику рендеринга
     return await task_select_calendar(update, context)
 
 
@@ -4579,41 +4605,57 @@ async def task_select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def time_slot_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Выбор временного слота с проверкой лимитов"""
+    """Выбор временного слота с проверкой лимитов и мгновенным обновлением планировщика."""
     query = update.callback_query
-    # Do not answer yet
+    # Не вызываем query.answer() здесь, так как логика ветвится (ошибка лимита vs успех)
 
-    task_id = context.user_data.get('current_task_id')
-    refresh_task_jobs(task_id, context)
+    user_id = query.from_user.id
+
+    # 1. Lazy Creation: Создаем задачу в БД, если это первое действие
+    task_id = get_or_create_task_id(user_id, context)
+
     time_str = query.data.replace("time_select_", "")
 
+    # Получаем текущие расписания
     schedules = get_task_schedules(task_id)
     selected_times = list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']]))
 
+    # Проверка лимитов тарифа
     user_tariff = context.user_data.get('tariff', 'free')
     limits = get_tariff_limits(user_tariff)
     max_slots = limits['time_slots']
 
     if time_str in selected_times:
+        # --- УДАЛЕНИЕ ВРЕМЕНИ ---
         # Удаляем время из всех расписаний
         db_query("DELETE FROM task_schedules WHERE task_id = %s AND schedule_time = %s",
                  (task_id, time_str), commit=True)
         await query.answer()
     else:
-        # --- CHECK TIME LIMITS ---
+        # --- ДОБАВЛЕНИЕ ВРЕМЕНИ ---
+        # Сначала проверяем лимиты
         if len(selected_times) >= max_slots:
             alert_text = get_text('limit_error_times', context).format(
                 current=len(selected_times),
                 max=max_slots,
                 tariff=limits['name']
             )
-            # show_alert=False shows it at the top
+            # show_alert=False показывает уведомление сверху
             await query.answer(alert_text, show_alert=False)
             return TIME_SELECTION
-        # --- END CHECK ---
 
-        # ... (existing add logic unchanged) ...
+        # Логика добавления:
+        # Если даты уже выбраны, добавляем это время ко всем выбранным датам.
+        # Если даты не выбраны, добавляем просто время (тип 'time').
+
+        # Сначала очищаем старые записи (упрощение логики пересчета комбинаций)
+        # Но лучше не удалять всё, а добавлять точечно, однако текущая логика бота
+        # подразумевает, что время применяется ко всем датам.
+
+        # Чтобы не дублировать код, удаляем старую структуру и перезаписываем
+        # (Это безопасно, так как мы знаем текущие даты и времена)
         remove_task_schedules(task_id)
+
         dates = [s for s in schedules if s['schedule_date']]
         all_times = selected_times + [time_str]
 
@@ -4628,13 +4670,28 @@ async def time_slot_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.answer()
 
-    # Update UI
+    # 2. Hot Reload: Обновляем планировщик ПОСЛЕ записи в БД
+    # Если задача активна, это удалит старый джоб (на 12:00) и создаст новый (на 12:05)
+    refresh_task_jobs(task_id, context)
+
+    # 3. Обновление UI
+    # Загружаем обновленные данные
     schedules = get_task_schedules(task_id)
     selected_times = list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']]))
 
-    user_tz = context.user_data.get('timezone', 'Europe/Moscow')
+    user_tz_str = context.user_data.get('timezone', 'Europe/Moscow')
+
+    # Исправленный блок отображения времени
+    try:
+        user_tz_obj = ZoneInfo(user_tz_str)
+    except ZoneInfoNotFoundError:
+        user_tz_obj = ZoneInfo('UTC')
+        user_tz_str = 'UTC (Default)'
+    current_time_str = datetime.now(user_tz_obj).strftime('%H:%M')
+
     text = get_text('time_selection_title', context)
-    text += f"\n{get_text('time_tz_info', context).format(timezone=user_tz)}"
+    text += f"\n{get_text('time_tz_info', context).format(timezone=user_tz_str)}"
+    text += f"\n🕒 **{get_text('time_current_info', context).format(current_time=current_time_str)}**"
     text += f"\n{get_text('time_slots_limit', context).format(slots=max_slots)} (Тариф: {limits['name']})"
     text += f"\n{get_text('time_selected_slots', context).format(count=len(selected_times), slots=max_slots)}"
 
@@ -4966,16 +5023,17 @@ async def task_receive_advertiser(update: Update, context: ContextTypes.DEFAULT_
 
 # --- Остальные настройки ---
 async def task_set_pin_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Пуш уведомление"""
     query = update.callback_query
-    await query.answer()
+    user_id = query.from_user.id
+    # 1.
+    task_id = get_or_create_task_id(user_id, context)
 
-    task_id = context.user_data.get('current_task_id')
     task = get_task_details(task_id)
-
-    # Переключаем значение
     new_value = not task['pin_notify']
+    # 2.
     update_task_field(task_id, 'pin_notify', new_value)
+    # 3.
+    refresh_task_jobs(task_id, context)
 
     status_text = get_text('status_yes', context) if new_value else get_text('status_no', context)
     alert_text = get_text('alert_pin_notify_status', context).format(status=status_text)
