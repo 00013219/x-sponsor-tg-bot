@@ -190,8 +190,8 @@ TEXTS = {
         # --- Добавленные локализации ---
         'status_set': "✅ Задано",
         'status_not_set': "❌ Не задано",
-        'status_from_bot': "От имени бота",
-        'status_repost': "Репост от рекламодателя",
+        'status_from_bot': "От бота",
+        'status_repost': "Репост",
         'error_generic': "❌ Произошла ошибка. Попробуйте снова.",
         'task_message_saved': "✅ Сообщение для публикации сохранено!",
         'task_name_saved': "✅ Название задачи сохранено!",
@@ -238,7 +238,7 @@ TEXTS = {
 
 
         'my_channels_title': "**🧩 Мои площадки**",
-        'my_channels_footer': "**Инструкция:**\n1. Добавьте канал, где бот имеет права админа.\n2. Нажмите на канал для управления.",
+        'my_channels_footer': "**Инструкция:**\n1. Добавьте бота в канал или чат с правами админа.\n2. Нажмите на канал для управления.",
         'my_channels_empty': "❌ У вас пока нет добавленных каналов.",
 
         'post_type_menu': "📤 **Выбор типа поста**",
@@ -405,6 +405,28 @@ TEXTS = {
         'limit_error_dates': "❌ Достигнут лимит дат ({current}/{max}) для тарифа {tariff}.",
         'limit_error_times': "❌ Достигнут лимит слотов времени ({current}/{max}) для тарифа {tariff}.",
         'limit_error_weekdays': "❌ Достигнут лимит дней недели ({current}/{max}) для тарифа {tariff}.",
+
+        'my_tasks_header': "📋 **Мои задачи** (всего: {count})\n\n{list_text}\n\n**Мини-инструкция:**\n📊 Статусы задач:\n🟢 Активно - выполняется\n🟡 Завершается - ожидает автоудаления\n🔴 Неактивно - остановлено",
+        'my_tasks_item_template': "{icon} #{id} • {name} • {status_text}",
+        'status_text_active': "Активно",
+        'status_text_finishing': "Завершается",
+        'status_text_inactive': "Неактивно",
+        'task_btn_template': "{icon} #{id} • {name}",
+        'task_tariff_info': "⭐ Тариф: {name}. Использовано: {current}/{max}",
+        'task_status_label': "Состояние: ",
+        'task_btn_deactivate': "🛑 ОТКЛЮЧИТЬ ЗАДАЧУ",
+        'task_deactivated_success': "🛑 Задача остановлена. Все будущие публикации отменены.",
+        'report_message': "📊 **Отчет о публикации**\n\n✅ Пост успешно опубликован в канале: {channel}\n📌 Закрепление: {pin}\n🗑 Автоудаление: {delete}\n\n🔗 Ссылка (если доступна): {link}",
+        'time_current_info': "Ваше текущее время: {current_time}",
+        'name_not_set': "Название не задано",
+
+        'task_activating_spinner': "Активация задачи...",
+        'task_not_found_error': "❌ Ошибка: задача не найдена.",
+        'task_validation_header': "❌ Невозможно активировать задачу:",
+        'task_error_no_message': "• Не задано сообщение для публикации",
+        'task_error_no_channels': "• Не выбраны каналы для публикации",
+        'task_error_no_schedule': "• Не задано расписание (даты и/или время)",
+        'task_job_creation_error': "❌ Ошибка при создании заданий публикации: {error}",
     },
     'en': {
         'welcome_lang': """🤖 Welcome to XSponsorBot!
@@ -682,6 +704,28 @@ Let's get started! Please select your language:""",
         'limit_error_dates': "❌ Date limit reached ({current}/{max}) for tariff {tariff}.",
         'limit_error_times': "❌ Time slot limit reached ({current}/{max}) for tariff {tariff}.",
         'limit_error_weekdays': "❌ Weekday limit reached ({current}/{max}) for tariff {tariff}.",
+
+        'my_tasks_header': "📋 **My Tasks** (total: {count})\n\n{list_text}\n\n**Legend:**\n📊 Task Statuses:\n🟢 Active - running\n🟡 Finishing - awaiting auto-delete\n🔴 Inactive - stopped",
+        'my_tasks_item_template': "{icon} #{id} • {name} • {status_text}",
+        'status_text_active': "Active",
+        'status_text_finishing': "Finishing",
+        'status_text_inactive': "Inactive",
+        'task_btn_template': "{icon} #{id} • {name}",
+        'task_tariff_info': "⭐ Tariff: {name}. Used: {current}/{max}",
+        'task_status_label': "Status: ",
+        'task_btn_deactivate': "🛑 STOP TASK",
+        'task_deactivated_success': "🛑 Task stopped. All future posts cancelled.",
+        'report_message': "📊 **Publication Report**\n\n✅ Post successfully published in channel: {channel}\n📌 Pin: {pin}\n🗑 Auto-delete: {delete}\n\n🔗 Link (if available): {link}",
+        'time_current_info': "Your current time: {current_time}",
+        'name_not_set': "No title provided",
+
+        'task_activating_spinner': "Activating task...",
+        'task_not_found_error': "❌ Error: task not found.",
+        'task_validation_header': "❌ Cannot activate task:",
+        'task_error_no_message': "• Publication message not set",
+        'task_error_no_channels': "• Channels not selected",
+        'task_error_no_schedule': "• Schedule not set (dates and/or time)",
+        'task_job_creation_error': "❌ Error creating publication jobs: {error}",
     },
     'es': {
         # ... (existing Spanish localizations) ...
@@ -960,6 +1004,28 @@ Mi objetivo es hacer que tu colaboración con los anunciantes sea lo más eficie
         'limit_error_dates': "❌ Límite de fechas alcanzado ({current}/{max}) para la tarifa {tariff}.",
         'limit_error_times': "❌ Límite de horarios alcanzado ({current}/{max}) para la tarifa {tariff}.",
         'limit_error_weekdays': "❌ Límite de días de la semana alcanzado ({current}/{max}) para la tarifa {tariff}.",
+
+        'my_tasks_header': "📋 **Mis Tareas** (total: {count})\n\n{list_text}\n\n**Mini-Instrucción:**\n📊 Estados de Tarea:\n🟢 Activo - en ejecución\n🟡 Finalizando - esperando auto-eliminación\n🔴 Inactivo - detenido",
+        'my_tasks_item_template': "{icon} #{id} • {name} • {status_text}",
+        'status_text_active': "Activo",
+        'status_text_finishing': "Finalizando",
+        'status_text_inactive': "Inactivo",
+        'task_btn_template': "{icon} #{id} • {name}",
+        'task_tariff_info': "⭐ Tarifa: {name}. Usado: {current}/{max}",
+        'task_status_label': "Estado: ",
+        'task_btn_deactivate': "🛑 DESACTIVAR TAREA",
+        'task_deactivated_success': "🛑 Tarea detenida. Todas las futuras publicaciones han sido canceladas.",
+        'report_message': "📊 **Informe de Publicación**\n\n✅ Post publicado exitosamente en el canal: {channel}\n📌 Fijar: {pin}\n🗑 Auto-eliminación: {delete}\n\n🔗 Enlace (si está disponible): {link}",
+        'time_current_info': "Su hora actual: {current_time}",
+        'name_not_set': "Título no especificado",
+
+        'task_activating_spinner': "Activando tarea...",
+        'task_not_found_error': "❌ Error: tarea no encontrada.",
+        'task_validation_header': "❌ No se puede activar la tarea:",
+        'task_error_no_message': "• Mensaje de publicación no establecido",
+        'task_error_no_channels': "• Canales no seleccionados",
+        'task_error_no_schedule': "• Horario no establecido (fechas y/o hora)",
+        'task_job_creation_error': "❌ Error al crear trabajos de publicación: {error}",
     },
     'fr': {
         # ... (existing French localizations) ...
@@ -1238,6 +1304,28 @@ Commençons! Veuillez sélectionner votre langue:""",
         'limit_error_dates': "❌ Limite de dates atteinte ({current}/{max}) pour le tarif {tariff}.",
         'limit_error_times': "❌ Limite de créneaux horaires atteinte ({current}/{max}) pour le tarif {tariff}.",
         'limit_error_weekdays': "❌ Limite de jours de la semaine atteinte ({current}/{max}) pour le tarif {tariff}.",
+
+        'my_tasks_header': "📋 **Mes Tâches** (total: {count})\n\n{list_text}\n\n**Mini-Instruction:**\n📊 Statuts des Tâches:\n🟢 Actif - en cours d'exécution\n🟡 Finalisation - en attente de suppression automatique\n🔴 Inactif - arrêté",
+        'my_tasks_item_template': "{icon} #{id} • {name} • {status_text}",
+        'status_text_active': "Actif",
+        'status_text_finishing': "Finalisation",
+        'status_text_inactive': "Inactif",
+        'task_btn_template': "{icon} #{id} • {name}",
+        'task_tariff_info': "⭐ Tarif: {name}. Utilisé: {current}/{max}",
+        'task_status_label': "Statut: ",
+        'task_btn_deactivate': "🛑 DÉSACTIVER LA TÂCHE",
+        'task_deactivated_success': "🛑 Tâche arrêtée. Toutes les futures publications annulées.",
+        'report_message': "📊 **Rapport de Publication**\n\n✅ Message publié avec succès dans le canal: {channel}\n📌 Épingler: {pin}\n🗑 Suppression auto: {delete}\n\n🔗 Lien (si disponible): {link}",
+        'time_current_info': "Votre heure actuelle: {current_time}",
+        'name_not_set': "Titre non spécifié",
+
+        'task_activating_spinner': "Activation de la tâche...",
+        'task_not_found_error': "❌ Erreur : tâche introuvable.",
+        'task_validation_header': "❌ Impossible d'activer la tâche :",
+        'task_error_no_message': "• Message de publication non défini",
+        'task_error_no_channels': "• Canaux non sélectionnés",
+        'task_error_no_schedule': "• Calendrier non défini (dates et/ou heure)",
+        'task_job_creation_error': "❌ Erreur lors de la création des tâches de publication : {error}",
     },
     'ua': {
         # ... (existing Ukrainian localizations) ...
@@ -1516,6 +1604,28 @@ Commençons! Veuillez sélectionner votre langue:""",
         'limit_error_dates': "❌ Досягнуто ліміт дат ({current}/{max}) для тарифу {tariff}.",
         'limit_error_times': "❌ Досягнуто ліміт слотів часу ({current}/{max}) для тарифу {tariff}.",
         'limit_error_weekdays': "❌ Досягнуто ліміт днів тижня ({current}/{max}) для тарифу {tariff}.",
+
+        'my_tasks_header': "📋 **Мої завдання** (всього: {count})\n\n{list_text}\n\n**Міні-інструкція:**\n📊 Статуси завдань:\n🟢 Активно - виконується\n🟡 Завершується - очікує автовидалення\n🔴 Неактивно - зупинено",
+        'my_tasks_item_template': "{icon} #{id} • {name} • {status_text}",
+        'status_text_active': "Активно",
+        'status_text_finishing': "Завершується",
+        'status_text_inactive': "Неактивно",
+        'task_btn_template': "{icon} #{id} • {name}",
+        'task_tariff_info': "⭐ Тариф: {name}. Використано: {current}/{max}",
+        'task_status_label': "Стан: ",
+        'task_btn_deactivate': "🛑 ВИМКНУТИ ЗАВДАННЯ",
+        'task_deactivated_success': "🛑 Завдання зупинено. Усі майбутні публікації скасовано.",
+        'report_message': "📊 **Звіт про публікацію**\n\n✅ Пост успішно опубліковано в каналі: {channel}\n📌 Закріплення: {pin}\n🗑 Автовидалення: {delete}\n\n🔗 Посилання (якщо доступне): {link}",
+        'time_current_info': "Ваш поточний час: {current_time}",
+        'name_not_set': "Назва не задана",
+
+        'task_activating_spinner': "Активація завдання...",
+        'task_not_found_error': "❌ Помилка: завдання не знайдено.",
+        'task_validation_header': "❌ Неможливо активувати завдання:",
+        'task_error_no_message': "• Не задано повідомлення для публікації",
+        'task_error_no_channels': "• Не обрано канали для публікації",
+        'task_error_no_schedule': "• Не задано розклад (дати та/або час)",
+        'task_job_creation_error': "❌ Помилка при створенні завдань публікації: {error}",
     },
     'de': {
         # ... (existing German localizations) ...
@@ -1794,6 +1904,28 @@ Lassen Sie uns beginnen! Bitte wählen Sie Ihre Sprache:""",
         'limit_error_dates': "❌ Datumslimit erreicht ({current}/{max}) für Tarif {tariff}.",
         'limit_error_times': "❌ Zeitfensterlimit erreicht ({current}/{max}) für Tarif {tariff}.",
         'limit_error_weekdays': "❌ Wochentagslimit erreicht ({current}/{max}) für Tarif {tariff}.",
+
+        'my_tasks_header': "📋 **Meine Aufgaben** (Gesamt: {count})\n\n{list_text}\n\n**Kurzanleitung:**\n📊 Aufgabenstatus:\n🟢 Aktiv - wird ausgeführt\n🟡 Abschließen - wartet auf Auto-Löschung\n🔴 Inaktiv - gestoppt",
+        'my_tasks_item_template': "{icon} #{id} • {name} • {status_text}",
+        'status_text_active': "Aktiv",
+        'status_text_finishing': "Abschließen",
+        'status_text_inactive': "Inaktiv",
+        'task_btn_template': "{icon} #{id} • {name}",
+        'task_tariff_info': "⭐ Tarif: {name}. Verwendet: {current}/{max}",
+        'task_status_label': "Status: ",
+        'task_btn_deactivate': "🛑 AUFGABE DEAKTIVIEREN",
+        'task_deactivated_success': "🛑 Aufgabe gestoppt. Alle zukünftigen Veröffentlichungen storniert.",
+        'report_message': "📊 **Veröffentlichungsbericht**\n\n✅ Beitrag erfolgreich im Kanal veröffentlicht: {channel}\n📌 Anheftung: {pin}\n🗑 Auto-Löschung: {delete}\n\n🔗 Link (falls verfügbar): {link}",
+        'time_current_info': "Ihre aktuelle Uhrzeit: {current_time}",
+        'name_not_set': "Kein Titel angegeben",
+
+        'task_activating_spinner': "Aufgabe wird aktiviert...",
+        'task_not_found_error': "❌ Fehler: Aufgabe nicht gefunden.",
+        'task_validation_header': "❌ Aufgabe kann nicht aktiviert werden:",
+        'task_error_no_message': "• Nachricht für Veröffentlichung nicht festgelegt",
+        'task_error_no_channels': "• Kanäle nicht ausgewählt",
+        'task_error_no_schedule': "• Zeitplan nicht festgelegt (Daten und/oder Zeit)",
+        'task_job_creation_error': "❌ Fehler beim Erstellen der Veröffentlichungsaufträge: {error}",
     }
 }
 
@@ -1985,6 +2117,118 @@ def get_critical_logs(limit=50):
     # For now, return empty or read from log file
     return []
 
+
+def generate_smart_name(text: str, limit: int = 4) -> str:
+    """
+    Генерирует короткое название: первые N слов, исключая предлоги, союзы, цифры.
+    """
+    if not text:
+        return "Название не задано"
+
+    # Список стоп-слов (пример для RU/EN)
+    stop_words = {
+        'в', 'на', 'под', 'за', 'к', 'до', 'по', 'из', 'у', 'о', 'об', 'с', 'от', 'для', 'и', 'или', 'но', 'а',
+        'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'and', 'or', 'but', 'the', 'a', 'an'
+    }
+
+    # Очистка от знаков препинания (оставляем только буквы и пробелы)
+    clean_text = re.sub(r'[^\w\s]', '', text)
+
+    words = clean_text.split()
+    filtered_words = []
+
+    for w in words:
+        # Пропускаем цифры и стоп-слова (короткие < 3 букв тоже часто мусор, но оставим проверку по списку)
+        if w.isdigit():
+            continue
+        if w.lower() in stop_words:
+            continue
+        filtered_words.append(w)
+
+        if len(filtered_words) >= limit:
+            break
+
+    if not filtered_words:
+        # Если все отфильтровалось (например "123 в на 55"), берем просто первые слова
+        return " ".join(words[:3]) + "..."
+
+    return " ".join(filtered_words) + "..."
+
+
+def determine_task_status_color(task_id: int, db_status: str) -> str:
+    """
+    Определяет цвет статуса (🔴, 🟢, 🟡) на основе данных БД и JobQueue.
+    """
+    if db_status != 'active':
+        return '🔴'
+
+    # Проверяем, есть ли запланированные публикации (Scheduled)
+    scheduled = db_query(
+        "SELECT COUNT(*) as count FROM publication_jobs WHERE task_id = %s AND status = 'scheduled'",
+        (task_id,), fetchone=True
+    )
+
+    if scheduled and scheduled['count'] > 0:
+        return '🟢'
+
+    # Если публикаций нет, проверяем, ждем ли мы автоудаления (Published + AutoDelete > 0)
+    # (Мы проверяем jobs, которые 'published', но у которых есть привязанный джоб на удаление в будущем)
+    # Упрощенно: смотрим, есть ли в publication_jobs записи со статусом 'published' и auto_delete > 0,
+    # и время удаления еще не пришло. Но проще проверить наличие джобов в aps_job_id в очереди.
+
+    # Простой вариант по ТЗ: "Завершается"
+    # Проверяем есть ли опубликованные посты, у которых не истекло время автоудаления
+    # Или просто: если статус Active, но нет Scheduled -> значит "Завершается" (ждет удалений или просто висит)
+    return '🟡'
+
+
+
+def refresh_task_jobs(task_id: int, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Перезапускает планировщик для задачи, если она активна.
+    Используется при изменении времени/даты "на лету".
+    """
+    task = get_task_details(task_id)
+    if not task or task['status'] != 'active':
+        return
+
+    logger.info(f"Hot-reload scheduler for active task {task_id}")
+
+    # 1. Отменяем старые джобы
+    cancel_task_jobs(task_id, context)
+
+    # 2. Создаем новые
+    user_settings = get_user_settings(task['user_id'])
+    user_tz = user_settings.get('timezone', 'Europe/Moscow')
+    create_publication_jobs_for_task(task_id, user_tz, context.application)
+
+
+def cancel_task_jobs(task_id: int, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Отменяет все запланированные публикации для задачи в БД и JobQueue.
+    Используется при переактивации или остановке задачи.
+    """
+    # 1. Ищем запланированные джобы в БД
+    jobs_to_cancel = db_query(
+        "SELECT aps_job_id FROM publication_jobs WHERE task_id = %s AND status = 'scheduled' AND aps_job_id IS NOT NULL",
+        (task_id,), fetchall=True
+    )
+
+    if jobs_to_cancel:
+        for job_row in jobs_to_cancel:
+            job_name = job_row.get('aps_job_id')
+            if job_name:
+                # Удаляем из планировщика Telegram
+                jobs = context.application.job_queue.get_jobs_by_name(job_name)
+                for job in jobs:
+                    job.schedule_removal()
+                    logger.info(f"Job {job_name} removed from scheduler (task refresh).")
+
+    # 2. Маркируем их как отмененные в БД, чтобы они не висели как 'scheduled'
+    db_query(
+        "UPDATE publication_jobs SET status = 'cancelled' WHERE task_id = %s AND status = 'scheduled'",
+        (task_id,), commit=True
+    )
 
 # --- Инициализация БД (ПОЛНОСТЬЮ НОВАЯ СХЕМА) ---
 def init_db():
@@ -2418,7 +2662,17 @@ def bottom_navigation_keyboard(context: ContextTypes.DEFAULT_TYPE):
 
 
 def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
-    """Клавиатура конструктора задач (согласно ТЗ)"""
+    """Клавиатура конструктора (С кнопкой Стоп/Старт)"""
+    task_id = context.user_data.get('current_task_id')
+    task = get_task_details(task_id)
+    is_active = task and task['status'] == 'active'
+
+    # Нижняя кнопка действия
+    if is_active:
+        action_btn = InlineKeyboardButton(get_text('task_btn_deactivate', context), callback_data="task_deactivate")
+    else:
+        action_btn = InlineKeyboardButton(get_text('task_activate_btn', context), callback_data="task_activate")
+
     keyboard = [
         [InlineKeyboardButton(get_text('task_set_name_btn', context), callback_data="task_set_name")],
         [InlineKeyboardButton(get_text('task_select_channels_btn', context), callback_data="task_select_channels")],
@@ -2437,7 +2691,7 @@ def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(get_text('task_set_post_type_btn', context), callback_data="task_set_post_type")],
         [InlineKeyboardButton(get_text('task_delete_btn', context), callback_data="task_delete")],
         [InlineKeyboardButton(get_text('back_to_main_menu_btn', context), callback_data="nav_main_menu")],
-        [InlineKeyboardButton(get_text('task_activate_btn', context), callback_data="task_activate")],
+        [action_btn],
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -2882,8 +3136,7 @@ async def nav_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def nav_my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает экран 'Мои задачи'"""
-    # Handle both callback_query and message
+    """Показывает экран 'Мои задачи' (Обновленный дизайн)"""
     if update.callback_query:
         query = update.callback_query
         await query.answer()
@@ -2894,39 +3147,81 @@ async def nav_my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = context.user_data['user_id']
     tasks = get_user_tasks(user_id)
 
-    # --- ДОБАВЛЯЕМ ОТОБРАЖЕНИЕ ЛИМИТА ---
     user_tariff = context.user_data.get('tariff', 'free')
     limits = get_tariff_limits(user_tariff)
     max_tasks = limits['tasks']
 
-    text = get_text('my_tasks_title', context).format(count=len(tasks))
-    text += f" (Лимит: {len(tasks)} / {max_tasks} - Тариф: {limits['name']})"
-    # --- КОНЕЦ ИЗМЕНЕНИЯ ---
-
     keyboard = []
+    list_text_items = []
 
     if not tasks:
-        text += f"\n\n{get_text('my_tasks_empty', context)}"
+        list_text = get_text('my_tasks_empty', context)
     else:
-        status_icons = {'active': '🟢', 'inactive': '🔴', 'completed': '🟡'}
+        # Сортируем: сначала Активные, потом Завершающиеся, потом Неактивные
+        # (Для простоты сортируем по ID desc, как в SQL, а цвета определяем на лету)
 
         for task in tasks:
-            status_icon = status_icons.get(task['status'], '⚪️')
-            task_name = (task['task_name'] or "Без названия")[:30]
+            icon = determine_task_status_color(task['id'], task['status'])
 
-            # text += f"\n{status_icon} #{task['id']} • {task_name} • {task['status']}" # Убрано, дублирует кнопки
+            # Определяем текстовый статус для списка
+            if icon == '🟢':
+                status_txt = get_text('status_text_active', context)
+            elif icon == '🟡':
+                status_txt = get_text('status_text_finishing', context)
+            else:
+                status_txt = get_text('status_text_inactive', context)
+
+            # Формируем строку списка
+            # Название - первые 4 слова (используем хелпер)
+            smart_name = generate_smart_name(task['task_name'] or "", limit=4)
+
+            item_str = get_text('my_tasks_item_template', context).format(
+                icon=icon,
+                id=task['id'],
+                name=smart_name,
+                status_text=status_txt
+            )
+            list_text_items.append(item_str)
+
+            # Формируем КНОПКУ (кратко, первые 3 слова)
+            btn_name = generate_smart_name(task['task_name'] or "", limit=3)
+            btn_str = get_text('task_btn_template', context).format(
+                icon=icon,
+                id=task['id'],
+                name=btn_name
+            )
 
             keyboard.append([
-                InlineKeyboardButton(
-                    f"{status_icon} #{task['id']} • {task_name}",
-                    callback_data=f"task_edit_{task['id']}"
-                )
+                InlineKeyboardButton(btn_str, callback_data=f"task_edit_{task['id']}")
             ])
 
-    keyboard.append([InlineKeyboardButton("🚀 ➕ Новая задача", callback_data="nav_new_task")])
-    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="nav_main_menu")])
+        list_text = "\n".join(list_text_items)
 
-    await message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    # Шапка + Список + Легенда
+    full_text = get_text('my_tasks_header', context).format(
+        count=len(tasks),
+        list_text=list_text
+    )
+
+    # Доп кнопки
+    keyboard.append([InlineKeyboardButton(get_text('nav_new_task_btn', context), callback_data="nav_new_task")])
+
+    # Плашка тарифа (неактивная кнопка или callback на тариф)
+    tariff_info = get_text('task_tariff_info', context).format(
+        name=limits['name'],
+        current=len(tasks),
+        max=max_tasks
+    )
+    keyboard.append([InlineKeyboardButton(tariff_info, callback_data="nav_tariff")])
+
+    keyboard.append([InlineKeyboardButton(get_text('back_to_main_menu_btn', context), callback_data="nav_main_menu")])
+
+    # Используем edit_message_text если возможно, иначе send
+    try:
+        await message.edit_message_text(full_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    except Exception:
+        await message.reply_text(full_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
     return MY_TASKS
 
 
@@ -3412,6 +3707,22 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
     hours_suffix = get_text('status_hours_suffix', context)
     hours_suffix_short = get_text('status_hours_suffix_short', context)
 
+    # ОПРЕДЕЛЯЕМ СТАТУС (Верхняя строка)
+    status_label = get_text('task_status_label', context)  # "Состояние: "
+    if task['status'] == 'active':
+        status_val = f"🟢 {get_text('status_text_active', context)}"
+    else:
+        status_val = f"🔴 {get_text('status_text_inactive', context)}"
+
+    # ... (сборка текста) ...
+    title = get_text('task_constructor_title', context)
+    text = f"{title}\n"
+    text += f"**{status_label}{status_val}**\n\n"  # <--- ДОБАВЛЕНО ВВЕРХУ
+
+    # Имя задачи (полное или дефолтное)
+    display_name = task['task_name'] if task['task_name'] else get_text('task_default_name', context)
+    text += f"📝 {display_name}\n"  # Убрано "Название:", просто иконка и текст
+
     # --- НОВАЯ ЛОГИКА ОТОБРАЖЕНИЯ ДАТ И ВРЕМЕНИ ---
     schedules = get_task_schedules(task_id)
 
@@ -3694,6 +4005,7 @@ async def task_delete_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Возвращаемся в конструктор
     return await show_task_constructor(update, context)
 
+
 async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Получено сообщение для поста"""
     task_id = context.user_data.get('current_task_id')
@@ -3708,9 +4020,20 @@ async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYP
     update_task_field(task_id, 'content_message_id', content_message_id)
     update_task_field(task_id, 'content_chat_id', content_chat_id)
 
-    await update.message.reply_text(get_text('task_message_saved', context))
+    # --- АВТО-ГЕНЕРАЦИЯ ИМЕНИ ---
+    task = get_task_details(task_id)
+    # Если имя еще не задано (или дефолтное/пустое), генерируем из текста
+    if not task['task_name']:
+        # Берем текст сообщения или подпись
+        msg_text = update.message.text or update.message.caption or "Фото/Видео без текста"
+        smart_name = generate_smart_name(msg_text, limit=3)  # Первые 3 слова по ТЗ
+        update_task_field(task_id, 'task_name', smart_name)
+        await update.message.reply_text(get_text('task_message_saved', context) + f"\n📝 Авто-название: {smart_name}")
+    else:
+        await update.message.reply_text(get_text('task_message_saved', context))
 
-    # Возвращаемся в конструктор
+    # Возвращаемся в конструктор (Если задача активна - обновляем джобы)
+    refresh_task_jobs(task_id, context)
     return await show_task_constructor(update, context)
 
 
@@ -4109,7 +4432,7 @@ async def calendar_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Выбор времени ---
 async def task_select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Нажата кнопка '🕐 Время'"""
+    """Нажата кнопка '🕐 Время' (Исправлена ошибка с таймзоной)"""
     query = update.callback_query
     await query.answer()
 
@@ -4119,21 +4442,35 @@ async def task_select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedules = get_task_schedules(task_id)
     selected_times = list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']]))
 
-    # Формируем текст
-    user_tz = context.user_data.get('timezone', 'Europe/Moscow')
-    user_tariff = context.user_data.get('tariff', 'free')
+    # --- ИСПРАВЛЕНИЕ ТАЙМЗОНЫ ---
+    # 1. Получаем название таймзоны (строка)
+    user_tz_str = context.user_data.get('timezone', 'Europe/Moscow')
 
-    # --- ИСПРАВЛЕНИЕ ЛОГИКИ ЛИМИТОВ ---
+    # 2. Создаем объект таймзоны
+    try:
+        user_tz_obj = ZoneInfo(user_tz_str)
+    except ZoneInfoNotFoundError:
+        user_tz_obj = ZoneInfo('UTC')
+        user_tz_str = 'UTC (Default)'  # Fallback для отображения
+
+    # 3. Вычисляем текущее время, используя ОБЪЕКТ
+    current_time_str = datetime.now(user_tz_obj).strftime('%H:%M')
+    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+
+    # Лимиты тарифа
+    user_tariff = context.user_data.get('tariff', 'free')
     limits = get_tariff_limits(user_tariff)
     max_slots = limits['time_slots']
-    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
+    # Формирование текста
     text = get_text('time_selection_title', context)
-    text += f"\n{get_text('time_tz_info', context).format(timezone=user_tz)}"
-    # --- ИСПРАВЛЕНИЕ ---
+    # Здесь используем СТРОКУ для отображения названия
+    text += f"\n{get_text('time_tz_info', context).format(timezone=user_tz_str)}"
+    # Здесь выводим вычисленное время
+    text += f"\n🕒 **{get_text('time_current_info', context).format(current_time=current_time_str)}**"
+
     text += f"\n{get_text('time_slots_limit', context).format(slots=max_slots)} (Тариф: {limits['name']})"
     text += f"\n{get_text('time_selected_slots', context).format(count=len(selected_times), slots=max_slots)}"
-    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
     await query.edit_message_text(
         text,
@@ -4148,6 +4485,7 @@ async def time_slot_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Do not answer yet
 
     task_id = context.user_data.get('current_task_id')
+    refresh_task_jobs(task_id, context)
     time_str = query.data.replace("time_select_", "")
 
     schedules = get_task_schedules(task_id)
@@ -4689,90 +5027,106 @@ async def task_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def task_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Активация задачи"""
+    """Активация задачи: Валидация -> Очистка старых -> Создание новых -> Уведомление"""
     query = update.callback_query
-    await query.answer("Активация задачи...")
+    # Показываем спиннер на языке пользователя
+    await query.answer(get_text('task_activating_spinner', context))
 
-    task_id = context.user_data['current_task_id']
+    task_id = context.user_data.get('current_task_id')
 
-    # Валидация задачи
+    # --- 1. Загрузка данных и Валидация ---
     task = get_task_details(task_id)
     if not task:
-        await query.edit_message_text("Ошибка: задача не найдена")
+        await query.edit_message_text(
+            get_text('task_not_found_error', context),
+            reply_markup=back_to_main_menu_keyboard(context)
+        )
         return MAIN_MENU
 
-    # Проверяем обязательные поля
     errors = []
-    if not task['content_message_id']:
-        errors.append("• Не задано сообщение для публикации")
 
+    # Проверка сообщения
+    if not task['content_message_id']:
+        errors.append(get_text('task_error_no_message', context))
+
+    # Проверка каналов
     channels = get_task_channels(task_id)
     if not channels:
-        errors.append("• Не выбраны каналы для публикации")
+        errors.append(get_text('task_error_no_channels', context))
 
+    # Проверка расписания
     schedules = get_task_schedules(task_id)
-    # Проверяем, что есть расписания И в них есть ВРЕМЯ
+    # Проверяем, что есть расписания И в них есть ВРЕМЯ (так как дата без времени не сработает)
     has_time = any(s['schedule_time'] for s in schedules)
     if not schedules or not has_time:
-        errors.append("• Не задано расписание (даты и/или время)")
+        errors.append(get_text('task_error_no_schedule', context))
 
+    # Если есть ошибки, показываем их и не активируем
     if errors:
-        error_text = "❌ Невозможно активировать задачу:\n\n" + "\n".join(errors)
+        header = get_text('task_validation_header', context)
+        error_text = f"{header}\n\n" + "\n".join(errors)
+
         await query.edit_message_text(
             error_text,
             reply_markup=back_to_constructor_keyboard(context)
         )
         return TASK_CONSTRUCTOR
 
-    # Activate task
+    # --- 2. Активация ---
+
+    # Обновляем статус в БД
     update_task_field(task_id, 'status', 'active')
 
-    # CREATE PUBLICATION JOBS
+    # ВАЖНО: Очищаем старые джобы перед созданием новых (на случай повторной активации)
+    cancel_task_jobs(task_id, context)
+
+    # Создаем новые задания (Jobs)
     user_tz = context.user_data.get('timezone', 'Europe/Moscow')
 
-    # FIXED: Add logging and feedback
     try:
-        # ***** MODIFIED HERE *****
-        # Передаем application в функцию и получаем кол-во задач
+        # create_publication_jobs_for_task должна быть определена в вашем коде
         job_count = create_publication_jobs_for_task(task_id, user_tz, context.application)
-        # ***** END MODIFICATION *****
-
-        logger.info(f"Task {task_id} activated. Created {job_count} publication jobs")
+        logger.info(f"Task {task_id} activated. Jobs created: {job_count}")
 
     except Exception as e:
         logger.error(f"Error creating publication jobs for task {task_id}: {e}", exc_info=True)
+        error_msg = get_text('task_job_creation_error', context).format(error=str(e))
         await query.edit_message_text(
-            f"❌ Ошибка при создании заданий публикации: {str(e)}",
+            error_msg,
             reply_markup=back_to_constructor_keyboard(context)
         )
+        # Откатываем статус, если не удалось создать джобы
+        update_task_field(task_id, 'status', 'inactive')
         return TASK_CONSTRUCTOR
 
-    # Отправка уведомления рекламодателю, если задан
+    # --- 3. Уведомление рекламодателя (если есть) ---
     if task['advertiser_user_id']:
         try:
-            task_name = task['task_name'] or get_text('task_default_name', context)
-            advertiser_user = get_user_settings(task['advertiser_user_id'])
+            # Генерируем или берем имя задачи
+            task_name = task['task_name']
+            if not task_name:
+                # Пытаемся сгенерировать, если нет имени (используя вашу функцию generate_smart_name)
+                # Если функции нет в скоупе, используем дефолт
+                task_name = get_text('task_default_name', context)
 
-            if advertiser_user:
-                lang = advertiser_user.get('language_code', 'en')
-                await context.bot.send_message(
-                    chat_id=task['advertiser_user_id'],
-                    text=get_text('task_advertiser_notify', context, lang).format(
-                        task_name=task_name
-                    )
-                )
+            # Получаем настройки рекламодателя, чтобы отправить уведомление на ЕГО языке
+            advertiser_settings = get_user_settings(task['advertiser_user_id'])
+            adv_lang = advertiser_settings.get('language_code', 'en') if advertiser_settings else 'en'
 
+            notify_text = get_text('task_advertiser_notify', context, lang=adv_lang).format(
+                task_name=task_name
+            )
+
+            await context.bot.send_message(
+                chat_id=task['advertiser_user_id'],
+                text=notify_text
+            )
         except Exception as e:
-            logger.error(f"Не удалось уведомить рекламодателя: {e}")
+            logger.warning(f"Не удалось уведомить рекламодателя {task['advertiser_user_id']}: {e}")
 
-    success_text = (
-            get_text('task_activated_title', context).format(task_id=task_id)
-            + "\n\n"
-    )
-    success_text += (
-            get_text('task_activated_jobs_count', context).format(job_count=job_count)
-            + "\n"
-    )
+    # --- 4. Финальный экран успеха ---
+    success_text = get_text('task_activated_title', context).format(task_id=task_id) + "\n\n"
+    success_text += get_text('task_activated_jobs_count', context).format(job_count=job_count) + "\n"
     success_text += get_text('task_activated_schedule_info', context)
 
     await query.edit_message_text(
@@ -4780,8 +5134,30 @@ async def task_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=back_to_main_menu_keyboard(context)
     )
 
-    del context.user_data['current_task_id']
+    # Очищаем текущий ID задачи из сессии, так как мы закончили
+    if 'current_task_id' in context.user_data:
+        del context.user_data['current_task_id']
+
     return MAIN_MENU
+
+
+async def task_deactivate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Остановка задачи"""
+    query = update.callback_query
+    await query.answer()
+
+    task_id = context.user_data['current_task_id']
+
+    # 1. Статус Inactive
+    update_task_field(task_id, 'status', 'inactive')
+
+    # 2. Отмена джобов
+    cancel_task_jobs(task_id, context)
+
+    await query.answer(get_text('task_deactivated_success', context), show_alert=True)
+
+    # Обновляем вид конструктора
+    return await show_task_constructor(update, context)
 
 
 # --- Админ-панель ---
@@ -5320,6 +5696,37 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
             except TelegramError as e:
                 logger.error(f"Ошибка закрепления работы {job_id}: {e}")
 
+            # --- БЛОК ОТЧЕТА ---
+            # Проверяем, что публикация успешна и в задаче включен отчет (в БД поле report_enabled есть в tasks,
+            # но нам нужно его достать. Лучше добавить report_enabled в таблицу publication_jobs при создании
+            task_info = db_query("SELECT report_enabled, task_name FROM tasks WHERE id = %s",
+                                 (job_data['task_id'],), fetchone=True)
+            if task_info and task_info['report_enabled']:
+                # Формируем отчет
+                channel_info = db_query(
+                    "SELECT channel_title, channel_username FROM channels WHERE channel_id = %s", (channel_id,),
+                    fetchone=True)
+                channel_name = channel_info['channel_title'] if channel_info else str(channel_id)
+
+                # Получаем ссылку на пост (если публичный канал)
+                post_link = f"https://t.me/{channel_info['channel_username']}/{posted_message_id}" if channel_info and \
+                                                                                                       channel_info[
+                                                                                                           'channel_username'] else "N/A"
+
+                report_text = get_text('report_message', context).format(
+                    channel=channel_name,
+                    pin="Да" if job_data['pin_duration'] > 0 else "Нет",
+                    delete=f"{job_data['auto_delete_hours']}ч" if job_data['auto_delete_hours'] > 0 else "Нет",
+                    link=post_link
+                )
+
+                # Отправляем пользователю (владельцу бота)
+                try:
+                    await bot.send_message(chat_id=user_id, text=report_text, disable_web_page_preview=True)
+                except Exception as e:
+                    logger.warning(f"Не удалось отправить отчет пользователю {user_id}: {e}")
+                # --- КОНЕЦ БЛОКА ОТЧЕТА ---
+
         # --- НОВЫЙ БЛОК: Планирование удаления ---
         if auto_delete_hours > 0:
             delete_time_utc = datetime.now(ZoneInfo('UTC')) + timedelta(hours=auto_delete_hours)
@@ -5738,6 +6145,7 @@ def main():
             CallbackQueryHandler(task_select_channels, pattern="^task_select_channels$"),
             CallbackQueryHandler(task_select_calendar, pattern="^task_select_calendar$"),
             CallbackQueryHandler(task_select_time, pattern="^task_select_time$"),
+            CallbackQueryHandler(task_deactivate, pattern="^task_deactivate$"),
             CallbackQueryHandler(task_set_pin, pattern="^task_set_pin$"),
             CallbackQueryHandler(task_set_pin_notify, pattern="^task_set_pin_notify$"),
             CallbackQueryHandler(task_set_delete, pattern="^task_set_delete$"),
