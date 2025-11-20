@@ -238,7 +238,7 @@ TEXTS = {
 
 
         'my_channels_title': "**🧩 Мои площадки**",
-        'my_channels_footer': "**Инструкция:**\n1. Добавьте бота в канал или чат с правами админа.\n2. Нажмите на канал для управления.",
+        'my_channels_footer': "**Инструкция:**\n1. Добавьте бота в канал или чат с правами админа.\n2. Нажмите на канал для удаления.",
         'my_channels_empty': "❌ У вас пока нет добавленных каналов.",
 
         'post_type_menu': "📤 **Выбор типа поста**",
@@ -427,6 +427,9 @@ TEXTS = {
         'task_error_no_channels': "• Не выбраны каналы для публикации",
         'task_error_no_schedule': "• Не задано расписание (даты и/или время)",
         'task_job_creation_error': "❌ Ошибка при создании заданий публикации: {error}",
+
+        'channel_not_found': '❌ Канал не найден или неактивен.',
+        'post_published': '📢 Опубликован пост в канале.',
     },
     'en': {
         'welcome_lang': """🤖 Welcome to XSponsorBot!
@@ -726,6 +729,8 @@ Let's get started! Please select your language:""",
         'task_error_no_channels': "• Channels not selected",
         'task_error_no_schedule': "• Schedule not set (dates and/or time)",
         'task_job_creation_error': "❌ Error creating publication jobs: {error}",
+        'channel_not_found': '❌ Channel not found or inactive.',
+        'post_published': '📢 Post published in the channel.',
     },
     'es': {
         # ... (existing Spanish localizations) ...
@@ -1026,6 +1031,9 @@ Mi objetivo es hacer que tu colaboración con los anunciantes sea lo más eficie
         'task_error_no_channels': "• Canales no seleccionados",
         'task_error_no_schedule': "• Horario no establecido (fechas y/o hora)",
         'task_job_creation_error': "❌ Error al crear trabajos de publicación: {error}",
+        'channel_not_found': '❌ Canal no encontrado o inactivo.',
+
+        'post_published': '📢 Publicación posteada en el canal.',
     },
     'fr': {
         # ... (existing French localizations) ...
@@ -1326,6 +1334,9 @@ Commençons! Veuillez sélectionner votre langue:""",
         'task_error_no_channels': "• Canaux non sélectionnés",
         'task_error_no_schedule': "• Calendrier non défini (dates et/ou heure)",
         'task_job_creation_error': "❌ Erreur lors de la création des tâches de publication : {error}",
+        'channel_not_found': '❌ Chaîne non trouvée ou inactive.',
+
+        'post_published': '📢 Publication postée sur la chaîne.',
     },
     'ua': {
         # ... (existing Ukrainian localizations) ...
@@ -1626,6 +1637,9 @@ Commençons! Veuillez sélectionner votre langue:""",
         'task_error_no_channels': "• Не обрано канали для публікації",
         'task_error_no_schedule': "• Не задано розклад (дати та/або час)",
         'task_job_creation_error': "❌ Помилка при створенні завдань публікації: {error}",
+
+        'channel_not_found': '❌ Канал не знайдено або неактивний.',
+        'post_published': '📢 Опубліковано пост у каналі.',
     },
     'de': {
         # ... (existing German localizations) ...
@@ -1926,6 +1940,8 @@ Lassen Sie uns beginnen! Bitte wählen Sie Ihre Sprache:""",
         'task_error_no_channels': "• Kanäle nicht ausgewählt",
         'task_error_no_schedule': "• Zeitplan nicht festgelegt (Daten und/oder Zeit)",
         'task_job_creation_error': "❌ Fehler beim Erstellen der Veröffentlichungsaufträge: {error}",
+        'channel_not_found': '❌ Kanal nicht gefunden oder inaktiv.',
+        'post_published': '📢 Beitrag im Kanal veröffentlicht.',
     }
 }
 
@@ -2118,41 +2134,47 @@ def get_critical_logs(limit=50):
     return []
 
 
-def generate_smart_name(text: str, limit: int = 4) -> str:
+def generate_smart_name(text: str, context: ContextTypes.DEFAULT_TYPE, limit: int = 4) -> str:
     """
-    Генерирует короткое название: первые N слов, исключая предлоги, союзы, цифры.
+    Генерирует короткое название: первые N информативных слов,
+    исключая предлоги, союзы, артикли и числа.
     """
     if not text:
-        return "Название не задано"
+        return get_text('name_not_set', context)
 
-    # Список стоп-слов (пример для RU/EN)
     stop_words = {
         'в', 'на', 'под', 'за', 'к', 'до', 'по', 'из', 'у', 'о', 'об', 'с', 'от', 'для', 'и', 'или', 'но', 'а',
         'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'and', 'or', 'but', 'the', 'a', 'an'
     }
 
-    # Очистка от знаков препинания (оставляем только буквы и пробелы)
-    clean_text = re.sub(r'[^\w\s]', '', text)
+    # Оставляем только буквы, цифры, нижнее подчёркивание и пробелы
+    clean_text = re.sub(r"[^\w\s]", "", text)
 
     words = clean_text.split()
     filtered_words = []
 
     for w in words:
-        # Пропускаем цифры и стоп-слова (короткие < 3 букв тоже часто мусор, но оставим проверку по списку)
-        if w.isdigit():
+        lw = w.lower()
+
+        # Пропуск чисел
+        if lw.isdigit():
             continue
-        if w.lower() in stop_words:
+
+        # Пропуск стоп-слов
+        if lw in stop_words:
             continue
+
         filtered_words.append(w)
 
         if len(filtered_words) >= limit:
             break
 
+    # Если после фильтрации ничего не осталось — просто взять первые 3 слова
     if not filtered_words:
-        # Если все отфильтровалось (например "123 в на 55"), берем просто первые слова
         return " ".join(words[:3]) + "..."
 
     return " ".join(filtered_words) + "..."
+
 
 
 def determine_task_status_color(task_id: int, db_status: str) -> str:
@@ -3184,7 +3206,7 @@ async def nav_my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             list_text_items.append(item_str)
 
             # Формируем КНОПКУ (кратко, первые 3 слова)
-            btn_name = generate_smart_name(task['task_name'] or "", limit=3)
+            btn_name = generate_smart_name(task['task_name'] or "", context, limit=3)
             btn_str = get_text('task_btn_template', context).format(
                 icon=icon,
                 id=task['id'],
@@ -3223,6 +3245,83 @@ async def nav_my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text(full_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
     return MY_TASKS
+
+
+async def channel_manage_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Меню управления конкретным каналом"""
+    query = update.callback_query
+    await query.answer()
+
+    channel_id = int(query.data.replace("channel_manage_", ""))
+
+    # Получаем информацию о канале
+    channel = db_query("SELECT * FROM channels WHERE channel_id = %s", (channel_id,), fetchone=True)
+
+    if not channel or not channel['is_active']:
+        await query.edit_message_text(
+            get_text('channel_not_found', context),
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton(get_text('back_btn', context), callback_data="nav_channels")]])
+        )
+        return MY_CHANNELS
+
+    title = channel['channel_title'] or "Без названия"
+    username = channel['channel_username'] or "нет юзернейма"
+
+    text = get_text('channel_actions_title', context) + "\n\n"
+    text += f"📢 **{title}**\n"
+    text += f"🔗 @{username}\n"
+    text += f"ID: `{channel_id}`\n\n"
+    text += "Что вы хотите сделать?"
+
+    keyboard = [
+        [InlineKeyboardButton(get_text('channel_remove_btn', context), callback_data=f"channel_delete_{channel_id}")],
+        [InlineKeyboardButton(get_text('channel_back_btn', context), callback_data="nav_channels")]
+    ]
+
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    return MY_CHANNELS
+
+
+async def channel_delete_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Удаление канала из списка (Soft delete)"""
+    query = update.callback_query
+    await query.answer()
+
+    channel_id = int(query.data.replace("channel_delete_", ""))
+
+    # Проверяем существование
+    channel = db_query("SELECT * FROM channels WHERE channel_id = %s", (channel_id,), fetchone=True)
+    title = channel['channel_title'] if channel else str(channel_id)
+
+    # Деактивируем канал
+    deactivate_channel(channel_id)
+
+    # Удаляем из всех будущих задач (опционально, но желательно)
+    db_query("DELETE FROM task_channels WHERE channel_id = %s", (channel_id,), commit=True)
+
+    text = get_text('channel_remove_success', context).format(title=title)
+
+    # Возвращаемся к списку
+    user_id = context.user_data['user_id']
+    channels = get_user_channels(user_id)
+
+    list_text = get_text('my_channels_title', context).format(count=len(channels))
+    keyboard = []
+
+    if not channels:
+        list_text += get_text('my_channels_empty', context)
+    else:
+        for ch in channels:
+            t = ch['channel_title'] or ch['channel_username'] or f"ID: {ch['channel_id']}"
+            list_text += f"\n• {t}"
+            keyboard.append([InlineKeyboardButton(f"📊 {t}", callback_data=f"channel_manage_{ch['channel_id']}")])
+
+    list_text += "\n\n" + text  # Добавляем сообщение об успехе
+    keyboard.append([InlineKeyboardButton(get_text('back_btn', context), callback_data="nav_main_menu")])
+
+    await query.edit_message_text(list_text, reply_markup=InlineKeyboardMarkup(keyboard))
+    return MY_CHANNELS
 
 
 async def nav_my_channels(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4026,7 +4125,7 @@ async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYP
     if not task['task_name']:
         # Берем текст сообщения или подпись
         msg_text = update.message.text or update.message.caption or "Фото/Видео без текста"
-        smart_name = generate_smart_name(msg_text, limit=3)  # Первые 3 слова по ТЗ
+        smart_name = generate_smart_name(msg_text, context, limit=3)  # Первые 3 слова по ТЗ
         update_task_field(task_id, 'task_name', smart_name)
         await update.message.reply_text(get_text('task_message_saved', context) + f"\n📝 Авто-название: {smart_name}")
     else:
@@ -5641,6 +5740,29 @@ async def execute_delete_job(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Критическая ошибка при удалении {message_id} из {channel_id}: {e}", exc_info=True)
 
+async def execute_unpin_job(context: ContextTypes.DEFAULT_TYPE):
+    """
+    ИСПОЛНИТЕЛЬ (вызывается JobQueue)
+    Открепляет сообщение (Unpin).
+    """
+    bot = context.bot
+    channel_id = context.job.data.get('channel_id')
+    message_id = context.job.data.get('message_id')
+    job_id = context.job.data.get('job_id', 'N/A')
+
+    if not channel_id or not message_id:
+        return
+
+    logger.info(f"Запуск execute_unpin_job для job_id: {job_id} -> Unpin {message_id} в {channel_id}")
+
+    try:
+        await bot.unpin_chat_message(chat_id=channel_id, message_id=message_id)
+        logger.info(f"Сообщение {message_id} успешно откреплено в {channel_id}")
+    except TelegramError as e:
+        logger.warning(f"Не удалось открепить сообщение {message_id} в {channel_id}: {e}")
+    except Exception as e:
+        logger.error(f"Ошибка при откреплении {message_id}: {e}")
+
 
 async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
     """
@@ -5671,6 +5793,7 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
     content_message_id = job_data['content_message_id']
     content_chat_id = job_data['content_chat_id']
     auto_delete_hours = job_data['auto_delete_hours']
+    pin_duration = job_data['pin_duration'] # Получаем длительность закрепа
 
     try:
         # Отправка сообщения
@@ -5680,12 +5803,11 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
             message_id=content_message_id,
             disable_notification=not job_data['pin_notify']
         )
-        logger.info(f"Работа {job_id} опубликована в {channel_id}, msg_id: {sent_message.message_id}")
-
         posted_message_id = sent_message.message_id
+        logger.info(f"Работа {job_id} опубликована в {channel_id}, msg_id: {posted_message_id}")
 
-        # Закрепление
-        if job_data['pin_duration'] > 0:
+        # --- БЛОК ЗАКРЕПЛЕНИЯ И ОТКРЕПЛЕНИЯ ---
+        if pin_duration > 0:
             try:
                 await bot.pin_chat_message(
                     chat_id=channel_id,
@@ -5693,6 +5815,26 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                     disable_notification=not job_data['pin_notify']
                 )
                 logger.info(f"Работа {job_id} закреплена.")
+
+                # ПЛАНИРУЕМ ОТКРЕПЛЕНИЕ (НОВОЕ)
+                # Если автоудаление стоит раньше, чем открепление, или автоудаления нет, планируем unpin
+                if auto_delete_hours == 0 or pin_duration < auto_delete_hours:
+                    unpin_time_utc = datetime.now(ZoneInfo('UTC')) + timedelta(hours=pin_duration)
+                    unpin_job_name = f"unpin_{job_id}_msg_{posted_message_id}"
+
+                    context.application.job_queue.run_once(
+                        execute_unpin_job,
+                        when=unpin_time_utc,
+                        data={
+                            'channel_id': channel_id,
+                            'message_id': posted_message_id,
+                            'job_id': job_id
+                        },
+                        name=unpin_job_name,
+                        job_kwargs={'misfire_grace_time': 600}
+                    )
+                    logger.info(f"Запланировано открепление для job {job_id} через {pin_duration}ч")
+
             except TelegramError as e:
                 logger.error(f"Ошибка закрепления работы {job_id}: {e}")
 
@@ -5727,23 +5869,23 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                     logger.warning(f"Не удалось отправить отчет пользователю {user_id}: {e}")
                 # --- КОНЕЦ БЛОКА ОТЧЕТА ---
 
-        # --- НОВЫЙ БЛОК: Планирование удаления ---
-        if auto_delete_hours > 0:
-            delete_time_utc = datetime.now(ZoneInfo('UTC')) + timedelta(hours=auto_delete_hours)
-            delete_job_name = f"del_{job_id}_msg_{posted_message_id}"
+                # --- БЛОК АВТОУДАЛЕНИЯ ---
+                if auto_delete_hours > 0:
+                    delete_time_utc = datetime.now(ZoneInfo('UTC')) + timedelta(hours=auto_delete_hours)
+                    delete_job_name = f"del_{job_id}_msg_{posted_message_id}"
 
-            context.application.job_queue.run_once(
-                execute_delete_job,
-                when=delete_time_utc,
-                data={
-                    'channel_id': channel_id,
-                    'message_id': posted_message_id,
-                    'job_id': job_id  # Для логов
-                },
-                name=delete_job_name,
-                job_kwargs={'misfire_grace_time': 300}  # 5 минут
-            )
-            logger.info(f"Работа {job_id} запланирована к удалению в {delete_time_utc}")
+                    context.application.job_queue.run_once(
+                        execute_delete_job,
+                        when=delete_time_utc,
+                        data={
+                            'channel_id': channel_id,
+                            'message_id': posted_message_id,
+                            'job_id': job_id
+                        },
+                        name=delete_job_name,
+                        job_kwargs={'misfire_grace_time': 600}
+                    )
+                    logger.info(f"Работа {job_id} запланирована к удалению через {auto_delete_hours}ч")
         # --- КОНЕЦ НОВОГО БЛОКА ---
 
         # Отправка уведомления рекламодателю
@@ -5751,7 +5893,7 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
             try:
                 await bot.send_message(
                     chat_id=job_data['advertiser_user_id'],
-                    text=f"📢 Опубликован пост в канале. Просмотры: 0"
+                    text=get_text('post_published', context)
                 )
             except Exception as e:
                 logger.error(f"Не удалось уведомить рекламодателя: {e}")
@@ -6070,6 +6212,8 @@ def main():
         ],
         MY_CHANNELS: [
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
+            CallbackQueryHandler(channel_manage_menu, pattern="^channel_manage_"),
+            CallbackQueryHandler(channel_delete_confirm, pattern="^channel_delete_"),
             reply_button_handler  # <--- ДОБАВЛЕНО
         ],
         FREE_DATES: [
