@@ -3195,7 +3195,7 @@ async def nav_my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # Формируем строку списка
             # Название - первые 4 слова (используем хелпер)
-            smart_name = generate_smart_name(task['task_name'] or "", limit=4)
+            smart_name = generate_smart_name(task['task_name'] or "",context, limit=4)
 
             item_str = get_text('my_tasks_item_template', context).format(
                 icon=icon,
