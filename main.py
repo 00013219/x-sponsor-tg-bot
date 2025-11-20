@@ -2176,32 +2176,40 @@ def generate_smart_name(text: str, context: ContextTypes.DEFAULT_TYPE, limit: in
     return " ".join(filtered_words) + "..."
 
 
-
 def determine_task_status_color(task_id: int, db_status: str) -> str:
     """
-    Определяет цвет статуса (🔴, 🟢, 🟡) на основе данных БД и JobQueue.
+    Определяет цвет статуса задачи на основе наличия запланированных
+    публикаций и ожидающих автоудаления постов.
     """
+    # Если задача выключена вручную (кнопкой Стоп), она всегда Красная
     if db_status != 'active':
         return '🔴'
 
-    # Проверяем, есть ли запланированные публикации (Scheduled)
+    # 1. Проверяем, есть ли БУДУЩИЕ запланированные публикации (Green)
+    # Статус 'scheduled' в publication_jobs означает, что пост еще не вышел
     scheduled = db_query(
-        "SELECT COUNT(*) as count FROM publication_jobs WHERE task_id = %s AND status = 'scheduled'",
+        "SELECT 1 FROM publication_jobs WHERE task_id = %s AND status = 'scheduled' LIMIT 1",
         (task_id,), fetchone=True
     )
-
-    if scheduled and scheduled['count'] > 0:
+    if scheduled:
         return '🟢'
 
-    # Если публикаций нет, проверяем, ждем ли мы автоудаления (Published + AutoDelete > 0)
-    # (Мы проверяем jobs, которые 'published', но у которых есть привязанный джоб на удаление в будущем)
-    # Упрощенно: смотрим, есть ли в publication_jobs записи со статусом 'published' и auto_delete > 0,
-    # и время удаления еще не пришло. Но проще проверить наличие джобов в aps_job_id в очереди.
+    # 2. Если будущих нет, проверяем, есть ли посты, ожидающие АВТОУДАЛЕНИЯ (Yellow)
+    # Условие: статус 'published', есть автоудаление, и время удаления еще не наступило
+    pending_delete = db_query("""
+        SELECT 1 FROM publication_jobs 
+        WHERE task_id = %s 
+          AND status = 'published' 
+          AND auto_delete_hours > 0 
+          AND (published_at + (auto_delete_hours || ' hours')::interval) > NOW() at time zone 'utc'
+        LIMIT 1
+    """, (task_id,), fetchone=True)
 
-    # Простой вариант по ТЗ: "Завершается"
-    # Проверяем есть ли опубликованные посты, у которых не истекло время автоудаления
-    # Или просто: если статус Active, но нет Scheduled -> значит "Завершается" (ждет удалений или просто висит)
-    return '🟡'
+    if pending_delete:
+        return '🟡'
+
+    # 3. Если нет ни будущих, ни ожидающих удаления — значит всё выполнено (Red)
+    return '🔴'
 
 def get_or_create_task_id(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
@@ -4417,16 +4425,19 @@ async def calendar_ignore_past(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def calendar_day_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Выбор дня в календаре с проверкой лимитов и мгновенным обновлением планировщика."""
+    """
+    Handles selection of a specific date in the calendar.
+    Automatically activates the task when a new date is added.
+    """
     query = update.callback_query
     user_id = query.from_user.id
 
-    # 1. Lazy Creation: Создаем задачу в БД
+    # 1. Lazy Creation
     task_id = get_or_create_task_id(user_id, context)
 
     date_str = query.data.replace("calendar_day_", "")
 
-    # Очищаем дни недели, так как пользователь перешел к выбору конкретных дат
+    # Clear weekdays (user switched to specific dates)
     db_query("DELETE FROM task_schedules WHERE task_id = %s AND schedule_weekday IS NOT NULL",
              (task_id,), commit=True)
 
@@ -4438,13 +4449,12 @@ async def calendar_day_select(update: Update, context: ContextTypes.DEFAULT_TYPE
     max_dates = limits['date_slots']
 
     if date_str in selected_dates:
-        # --- УДАЛЕНИЕ ДАТЫ ---
+        # --- REMOVE DATE ---
         db_query("DELETE FROM task_schedules WHERE task_id = %s AND schedule_date = %s",
                  (task_id, date_str), commit=True)
         await query.answer()
     else:
-        # --- ДОБАВЛЕНИЕ ДАТЫ ---
-        # Проверка лимитов
+        # --- ADD DATE ---
         if len(selected_dates) >= max_dates:
             alert_text = get_text('limit_error_dates', context).format(
                 current=len(selected_dates),
@@ -4452,29 +4462,28 @@ async def calendar_day_select(update: Update, context: ContextTypes.DEFAULT_TYPE
                 tariff=limits['name']
             )
             await query.answer(alert_text, show_alert=False)
-            # Возвращаем то же состояние, чтобы не ломать навигацию
-            # Но UI обновлять не нужно, так как ничего не изменилось
             return CALENDAR_VIEW
 
-            # Добавление
-        # Проверяем, выбрано ли уже время. Если да, добавляем дату с привязкой к этому времени.
-        # (schedules уже загружен выше, но после удаления weekdays он мог устареть, лучше проверить times)
-        # Но мы берем times из schedules, полученных ДО удаления даты, это корректно.
+            # AUTO-ACTIVATION: User is adding schedule, set task to active.
+        update_task_field(task_id, 'status', 'active')
+
+        # Check if times are already selected
         times = list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']]))
 
         if times:
+            # If times exist, add this date for every existing time
             for time_str in times:
                 add_task_schedule(task_id, 'datetime', schedule_date=date_str, schedule_time=time_str)
         else:
+            # If no times yet, just add the date
             add_task_schedule(task_id, 'date', schedule_date=date_str)
 
         await query.answer()
 
-    # 2. Hot Reload: Обновляем планировщик ПОСЛЕ записи
+    # 2. Hot Reload: Refresh scheduler immediately
     refresh_task_jobs(task_id, context)
 
-    # 3. Обновление UI (перерисовываем календарь)
-    # Используем функцию task_select_calendar, так как она содержит логику рендеринга
+    # 3. Update UI (Redraw calendar)
     return await task_select_calendar(update, context)
 
 
@@ -4605,94 +4614,88 @@ async def task_select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def time_slot_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Выбор временного слота с проверкой лимитов и мгновенным обновлением планировщика."""
+    """
+    Handles selection of a time slot.
+    Automatically activates the task when a new time is added.
+    """
     query = update.callback_query
-    # Не вызываем query.answer() здесь, так как логика ветвится (ошибка лимита vs успех)
-
     user_id = query.from_user.id
 
-    # 1. Lazy Creation: Создаем задачу в БД, если это первое действие
+    # 1. Lazy Creation: Create task in DB if it doesn't exist
     task_id = get_or_create_task_id(user_id, context)
 
     time_str = query.data.replace("time_select_", "")
 
-    # Получаем текущие расписания
+    # Get current schedules
     schedules = get_task_schedules(task_id)
     selected_times = list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']]))
 
-    # Проверка лимитов тарифа
+    # Check tariff limits
     user_tariff = context.user_data.get('tariff', 'free')
     limits = get_tariff_limits(user_tariff)
     max_slots = limits['time_slots']
 
     if time_str in selected_times:
-        # --- УДАЛЕНИЕ ВРЕМЕНИ ---
-        # Удаляем время из всех расписаний
+        # --- REMOVE TIME ---
         db_query("DELETE FROM task_schedules WHERE task_id = %s AND schedule_time = %s",
                  (task_id, time_str), commit=True)
         await query.answer()
     else:
-        # --- ДОБАВЛЕНИЕ ВРЕМЕНИ ---
-        # Сначала проверяем лимиты
+        # --- ADD TIME ---
         if len(selected_times) >= max_slots:
             alert_text = get_text('limit_error_times', context).format(
                 current=len(selected_times),
                 max=max_slots,
                 tariff=limits['name']
             )
-            # show_alert=False показывает уведомление сверху
             await query.answer(alert_text, show_alert=False)
             return TIME_SELECTION
 
-        # Логика добавления:
-        # Если даты уже выбраны, добавляем это время ко всем выбранным датам.
-        # Если даты не выбраны, добавляем просто время (тип 'time').
+        # AUTO-ACTIVATION: If user adds a schedule, assume they want the task active.
+        # This ensures the task turns Green if it has dates, or gets ready to turn Green.
+        update_task_field(task_id, 'status', 'active')
 
-        # Сначала очищаем старые записи (упрощение логики пересчета комбинаций)
-        # Но лучше не удалять всё, а добавлять точечно, однако текущая логика бота
-        # подразумевает, что время применяется ко всем датам.
-
-        # Чтобы не дублировать код, удаляем старую структуру и перезаписываем
-        # (Это безопасно, так как мы знаем текущие даты и времена)
-        remove_task_schedules(task_id)
-
+        # Add logic: Apply this time to all existing dates, or add as generic time if no dates
+        # First, clear current schedules to avoid duplicates logic complexity
+        # (We re-insert everything cleanly)
         dates = [s for s in schedules if s['schedule_date']]
-        all_times = selected_times + [time_str]
+
+        # We are deleting everything for this task to rebuild cleanly,
+        # but we must be careful not to lose the dates if we are just adding a time.
+        # Actually, simpler approach: just insert the new combination.
 
         if dates:
             unique_dates_data = {d['schedule_date'] for d in dates}
             for date_val in unique_dates_data:
-                for time in all_times:
-                    add_task_schedule(task_id, 'datetime', schedule_date=date_val, schedule_time=time)
+                # Insert specific datetime
+                add_task_schedule(task_id, 'datetime', schedule_date=date_val, schedule_time=time_str)
         else:
-            for time in all_times:
-                add_task_schedule(task_id, 'time', schedule_time=time)
+            # Insert generic time
+            add_task_schedule(task_id, 'time', schedule_time=time_str)
 
         await query.answer()
 
-    # 2. Hot Reload: Обновляем планировщик ПОСЛЕ записи в БД
-    # Если задача активна, это удалит старый джоб (на 12:00) и создаст новый (на 12:05)
+    # 2. Hot Reload: Refresh scheduler immediately after DB changes
     refresh_task_jobs(task_id, context)
 
-    # 3. Обновление UI
-    # Загружаем обновленные данные
+    # 3. Update UI
+    # Reload data to reflect changes
     schedules = get_task_schedules(task_id)
     selected_times = list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']]))
 
     user_tz_str = context.user_data.get('timezone', 'Europe/Moscow')
-
-    # Исправленный блок отображения времени
     try:
         user_tz_obj = ZoneInfo(user_tz_str)
     except ZoneInfoNotFoundError:
         user_tz_obj = ZoneInfo('UTC')
         user_tz_str = 'UTC (Default)'
+
     current_time_str = datetime.now(user_tz_obj).strftime('%H:%M')
 
     text = get_text('time_selection_title', context)
     text += f"\n{get_text('time_tz_info', context).format(timezone=user_tz_str)}"
     text += f"\n🕒 **{get_text('time_current_info', context).format(current_time=current_time_str)}**"
-    text += f"\n{get_text('time_slots_limit', context).format(slots=max_slots)} (Тариф: {limits['name']})"
+    text += f"\n{get_text('time_slots_limit', context).format(slots=max_slots)} (Tariff: {limits['name']})"
     text += f"\n{get_text('time_selected_slots', context).format(count=len(selected_times), slots=max_slots)}"
 
     await query.edit_message_text(
@@ -5824,26 +5827,28 @@ async def execute_unpin_job(context: ContextTypes.DEFAULT_TYPE):
 
 async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
     """
-    ИСПОЛНИТЕЛЬ (вызывается JobQueue)
-    Публикует пост, используя ID из publication_jobs
+    EXECUTOR (called by JobQueue).
+    Publishes the post, handles pins/auto-deletes, and notifies the user.
     """
     bot = context.bot
     job_id = context.job.data.get('job_id')
 
+    # Fallback to extract ID from job name if data is missing
     if not job_id:
         try:
             job_id = int(context.job.name.replace('pub_', ''))
         except:
-            logger.error("Could not determine job_id")
+            logger.error("Could not determine job_id in execute_publication_job")
             return
 
-    logger.info(f"Запуск execute_publication_job для job_id: {job_id}")
+    logger.info(f"Starting execute_publication_job for job_id: {job_id}")
 
+    # Fetch job details
     job_data = db_query("SELECT * FROM publication_jobs WHERE id = %s AND status = 'scheduled'", (job_id,),
                         fetchone=True)
 
     if not job_data:
-        logger.error(f"Работа {job_id} не найдена в БД или уже выполнена.")
+        logger.warning(f"Job {job_id} not found in DB or already processed.")
         return
 
     user_id = job_data['user_id']
@@ -5851,31 +5856,33 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
     content_message_id = job_data['content_message_id']
     content_chat_id = job_data['content_chat_id']
     auto_delete_hours = job_data['auto_delete_hours']
-    pin_duration = job_data['pin_duration'] # Получаем длительность закрепа
+    pin_duration = job_data['pin_duration']
+    pin_notify = job_data['pin_notify']
+    task_id = job_data['task_id']
 
     try:
-        # Отправка сообщения
+        # 1. Publish the message
         sent_message = await bot.copy_message(
             chat_id=channel_id,
             from_chat_id=content_chat_id,
             message_id=content_message_id,
-            disable_notification=not job_data['pin_notify']
+            disable_notification=not pin_notify
         )
         posted_message_id = sent_message.message_id
-        logger.info(f"Работа {job_id} опубликована в {channel_id}, msg_id: {posted_message_id}")
+        logger.info(f"Job {job_id} published to channel {channel_id}, msg_id: {posted_message_id}")
 
-        # --- БЛОК ЗАКРЕПЛЕНИЯ И ОТКРЕПЛЕНИЯ ---
+        # 2. Handle Pinning
         if pin_duration > 0:
             try:
                 await bot.pin_chat_message(
                     chat_id=channel_id,
                     message_id=posted_message_id,
-                    disable_notification=not job_data['pin_notify']
+                    disable_notification=not pin_notify
                 )
-                logger.info(f"Работа {job_id} закреплена.")
+                logger.info(f"Job {job_id} pinned.")
 
-                # ПЛАНИРУЕМ ОТКРЕПЛЕНИЕ (НОВОЕ)
-                # Если автоудаление стоит раньше, чем открепление, или автоудаления нет, планируем unpin
+                # Schedule Unpin
+                # Only schedule unpin if auto-delete is later than unpin, or if auto-delete is disabled
                 if auto_delete_hours == 0 or pin_duration < auto_delete_hours:
                     unpin_time_utc = datetime.now(ZoneInfo('UTC')) + timedelta(hours=pin_duration)
                     unpin_job_name = f"unpin_{job_id}_msg_{posted_message_id}"
@@ -5891,62 +5898,62 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                         name=unpin_job_name,
                         job_kwargs={'misfire_grace_time': 600}
                     )
-                    logger.info(f"Запланировано открепление для job {job_id} через {pin_duration}ч")
-
+                    logger.info(f"Scheduled unpin for job {job_id} in {pin_duration}h")
             except TelegramError as e:
-                logger.error(f"Ошибка закрепления работы {job_id}: {e}")
+                logger.error(f"Failed to pin message for job {job_id}: {e}")
 
-            # --- БЛОК ОТЧЕТА ---
-            # Проверяем, что публикация успешна и в задаче включен отчет (в БД поле report_enabled есть в tasks,
-            # но нам нужно его достать. Лучше добавить report_enabled в таблицу publication_jobs при создании
-            task_info = db_query("SELECT report_enabled, task_name FROM tasks WHERE id = %s",
-                                 (job_data['task_id'],), fetchone=True)
-            if task_info and task_info['report_enabled']:
-                # Формируем отчет
-                channel_info = db_query(
-                    "SELECT channel_title, channel_username FROM channels WHERE channel_id = %s", (channel_id,),
-                    fetchone=True)
-                channel_name = channel_info['channel_title'] if channel_info else str(channel_id)
+        # 3. Handle Auto-Delete
+        if auto_delete_hours > 0:
+            delete_time_utc = datetime.now(ZoneInfo('UTC')) + timedelta(hours=auto_delete_hours)
+            delete_job_name = f"del_{job_id}_msg_{posted_message_id}"
 
-                # Получаем ссылку на пост (если публичный канал)
-                post_link = f"https://t.me/{channel_info['channel_username']}/{posted_message_id}" if channel_info and \
-                                                                                                       channel_info[
-                                                                                                           'channel_username'] else "N/A"
+            context.application.job_queue.run_once(
+                execute_delete_job,
+                when=delete_time_utc,
+                data={
+                    'channel_id': channel_id,
+                    'message_id': posted_message_id,
+                    'job_id': job_id
+                },
+                name=delete_job_name,
+                job_kwargs={'misfire_grace_time': 600}
+            )
+            logger.info(f"Scheduled auto-delete for job {job_id} in {auto_delete_hours}h")
 
-                report_text = get_text('report_message', context).format(
-                    channel=channel_name,
-                    pin="Да" if job_data['pin_duration'] > 0 else "Нет",
-                    delete=f"{job_data['auto_delete_hours']}ч" if job_data['auto_delete_hours'] > 0 else "Нет",
-                    link=post_link
-                )
+        # 4. Notify the Bot User (Owner)
+        # Fetch channel info for a nice message
+        channel_info = db_query(
+            "SELECT channel_title, channel_username FROM channels WHERE channel_id = %s", (channel_id,),
+            fetchone=True)
+        channel_name = channel_info['channel_title'] if channel_info else str(channel_id)
 
-                # Отправляем пользователю (владельцу бота)
-                try:
-                    await bot.send_message(chat_id=user_id, text=report_text, disable_web_page_preview=True)
-                except Exception as e:
-                    logger.warning(f"Не удалось отправить отчет пользователю {user_id}: {e}")
-                # --- КОНЕЦ БЛОКА ОТЧЕТА ---
+        # Check if full reports are enabled
+        task_info = db_query("SELECT report_enabled, task_name FROM tasks WHERE id = %s", (task_id,), fetchone=True)
 
-                # --- БЛОК АВТОУДАЛЕНИЯ ---
-                if auto_delete_hours > 0:
-                    delete_time_utc = datetime.now(ZoneInfo('UTC')) + timedelta(hours=auto_delete_hours)
-                    delete_job_name = f"del_{job_id}_msg_{posted_message_id}"
+        if task_info and task_info['report_enabled']:
+            # Full Report
+            username = channel_info['channel_username'] if channel_info else None
+            post_link = f"https://t.me/{username}/{posted_message_id}" if username else "Link unavailable"
 
-                    context.application.job_queue.run_once(
-                        execute_delete_job,
-                        when=delete_time_utc,
-                        data={
-                            'channel_id': channel_id,
-                            'message_id': posted_message_id,
-                            'job_id': job_id
-                        },
-                        name=delete_job_name,
-                        job_kwargs={'misfire_grace_time': 600}
-                    )
-                    logger.info(f"Работа {job_id} запланирована к удалению через {auto_delete_hours}ч")
-        # --- КОНЕЦ НОВОГО БЛОКА ---
+            report_text = get_text('report_message', context).format(
+                channel=channel_name,
+                pin="Yes" if pin_duration > 0 else "No",
+                delete=f"{auto_delete_hours}h" if auto_delete_hours > 0 else "No",
+                link=post_link
+            )
+            try:
+                await bot.send_message(chat_id=user_id, text=report_text, disable_web_page_preview=True)
+            except Exception as e:
+                logger.warning(f"Failed to send report to user {user_id}: {e}")
+        else:
+            # Simple Notification
+            notify_text = f"📢 **Post Published!**\n\nChannel: {channel_name}"
+            try:
+                await bot.send_message(chat_id=user_id, text=notify_text)
+            except Exception as e:
+                logger.warning(f"Failed to notify user {user_id}: {e}")
 
-        # Отправка уведомления рекламодателю
+        # 5. Notify Advertiser (if exists)
         if job_data['advertiser_user_id']:
             try:
                 await bot.send_message(
@@ -5954,23 +5961,23 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                     text=get_text('post_published', context)
                 )
             except Exception as e:
-                logger.error(f"Не удалось уведомить рекламодателя: {e}")
+                logger.error(f"Failed to notify advertiser: {e}")
 
-        # Обновление статуса
+        # 6. Update DB Status
         db_query("""
             UPDATE publication_jobs
             SET status = 'published', published_at = NOW(), posted_message_id = %s
             WHERE id = %s
         """, (posted_message_id, job_id), commit=True)
 
-        logger.info(f"Работа {job_id} успешно завершена.")
+        logger.info(f"Job {job_id} successfully completed.")
 
     except Forbidden as e:
-        logger.error(f"Forbidden: Не удалось выполнить работу {job_id} в {channel_id}: {e}")
+        logger.error(f"Forbidden: Could not publish job {job_id} to {channel_id}: {e}")
         db_query("UPDATE publication_jobs SET status = 'failed' WHERE id = %s", (job_id,), commit=True)
 
     except Exception as e:
-        logger.error(f"Критическая ошибка при выполнении работы {job_id}: {e}", exc_info=True)
+        logger.error(f"Critical error executing job {job_id}: {e}", exc_info=True)
         db_query("UPDATE publication_jobs SET status = 'failed' WHERE id = %s", (job_id,), commit=True)
 
 # --- 6. Логика платежей (Stars) ---
