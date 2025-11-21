@@ -2259,27 +2259,129 @@ async def cancel_task_jobs(task_id: int, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Cancelled pending jobs for task {task_id}")
 
 
+def validate_task(task_id: int, context: ContextTypes.DEFAULT_TYPE) -> tuple[bool, str]:
+    """
+    Validates if a task has all required fields to be Active.
+    Used during Hot-Reload to ensure we don't schedule broken tasks.
+    """
+    task = get_task_details(task_id)
+    if not task:
+        return False, "Task not found"
+
+    # 1. Check Message
+    if not task.get('content_message_id'):
+        return False, get_text('task_error_no_message', context)
+
+    # 2. Check Channels
+    channels = get_task_channels(task_id)
+    if not channels:
+        return False, get_text('task_error_no_channels', context)
+
+    # 3. Check Schedule (Dates/Weekdays AND Times)
+    schedules = get_task_schedules(task_id)
+    has_time = any(s['schedule_time'] for s in schedules)
+    if not schedules or not has_time:
+        return False, get_text('task_error_no_schedule', context)
+
+    return True, ""
+
+
 async def refresh_task_jobs(task_id: int, context: ContextTypes.DEFAULT_TYPE):
     """
-    HOT RELOAD: Completely refreshes the scheduler for a task if it is ACTIVE.
+    HOT RELOAD LOGIC:
+    1. Checks if task is ACTIVE. If Inactive (creation mode) -> Do nothing.
+    2. If Active (edit mode) -> Cancel ALL previous jobs immediately.
+    3. Validate and Reschedule with NEW parameters.
     """
-    # 1. Check if task is active
+    # 1. Check Status
     task = get_task_details(task_id)
     if not task or task['status'] != 'active':
+        # Stop here if we are just creating the task (Constraint: do not auto activate while creating)
         return
 
-    logger.info(f"Hot-reloading scheduler for active task {task_id}")
+    logger.info(f"🔄 Hot-reloading active task {task_id} due to parameter change...")
 
-    # 2. Cancel existing jobs
+    # 2. Cancel OLD jobs
+    # (Constraint: previous task should be cancelled and not published)
     await cancel_task_jobs(task_id, context)
 
-    # 3. Re-calculate and schedule new jobs
-    user_settings = get_user_settings(task['user_id'])
-    user_tz = user_settings.get('timezone', 'Europe/Moscow')
+    # 3. Validate New State
+    is_valid, error = validate_task(task_id, context)
 
-    # create_publication_jobs_for_task must be synchronous or awaited properly.
-    # Since your existing function is sync but uses job_queue (which is thread-safe), we call it directly.
-    create_publication_jobs_for_task(task_id, user_tz, context.application)
+    if is_valid:
+        # 4. Create NEW jobs
+        # (Constraint: the one with new parameters should be published)
+        user_settings = get_user_settings(task['user_id'])
+        user_tz = user_settings.get('timezone', 'Europe/Moscow')
+
+        count = create_publication_jobs_for_task(task_id, user_tz, context.application)
+        logger.info(f"✅ Task {task_id} hot-reloaded. Scheduled {count} jobs.")
+    else:
+        # If the edit made the task invalid (e.g. removed all times), force deactivate
+        logger.warning(f"⚠️ Task {task_id} invalid after edit. Deactivating. Reason: {error}")
+        # We use db_query directly to avoid infinite recursion with update_task_field
+        db_query("UPDATE tasks SET status = 'inactive' WHERE id = %s", (task_id,), commit=True)
+        # Optionally notify user here
+
+
+async def update_task_field(task_id: int, field: str, value: Any, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Updates a DB field and triggers the Hot-Reload check.
+    """
+    allowed_fields = [
+        'task_name', 'content_message_id', 'content_chat_id', 'pin_duration',
+        'pin_notify', 'auto_delete_hours', 'report_enabled',
+        'advertiser_user_id', 'post_type', 'status'
+    ]
+
+    if field not in allowed_fields:
+        logger.error(f"Attempt to update invalid field: {field}")
+        return
+
+    # 1. Update DB
+    sql = f"UPDATE tasks SET {field} = %s WHERE id = %s"
+    db_query(sql, (value, task_id), commit=True)
+
+    # 2. Trigger Hot Reload (Auto-activate if already active)
+    await refresh_task_jobs(task_id, context)
+
+
+async def refresh_task_jobs(task_id: int, context: ContextTypes.DEFAULT_TYPE):
+    """
+    HOT RELOAD LOGIC:
+    1. Checks if task is ACTIVE. If Inactive (creation mode) -> Do nothing.
+    2. If Active (edit mode) -> Cancel ALL previous jobs immediately.
+    3. Validate and Reschedule with NEW parameters.
+    """
+    # 1. Check Status
+    task = get_task_details(task_id)
+    if not task or task['status'] != 'active':
+        # Stop here if we are just creating the task (Constraint: do not auto activate while creating)
+        return
+
+    logger.info(f"🔄 Hot-reloading active task {task_id} due to parameter change...")
+
+    # 2. Cancel OLD jobs
+    # (Constraint: previous task should be cancelled and not published)
+    await cancel_task_jobs(task_id, context)
+
+    # 3. Validate New State
+    is_valid, error = validate_task(task_id, context)
+
+    if is_valid:
+        # 4. Create NEW jobs
+        # (Constraint: the one with new parameters should be published)
+        user_settings = get_user_settings(task['user_id'])
+        user_tz = user_settings.get('timezone', 'Europe/Moscow')
+
+        count = create_publication_jobs_for_task(task_id, user_tz, context.application)
+        logger.info(f"✅ Task {task_id} hot-reloaded. Scheduled {count} jobs.")
+    else:
+        # If the edit made the task invalid (e.g. removed all times), force deactivate
+        logger.warning(f"⚠️ Task {task_id} invalid after edit. Deactivating. Reason: {error}")
+        # We use db_query directly to avoid infinite recursion with update_task_field
+        db_query("UPDATE tasks SET status = 'inactive' WHERE id = %s", (task_id,), commit=True)
+        # Optionally notify user here
 
 # --- Инициализация БД (ПОЛНОСТЬЮ НОВАЯ СХЕМА) ---
 def init_db():
@@ -2581,8 +2683,7 @@ def get_task_details(task_id: int) -> Optional[Dict]:
 
 async def update_task_field(task_id: int, field: str, value: Any, context: ContextTypes.DEFAULT_TYPE):
     """
-    Updates a task field and Hot-Reloads the scheduler if the task is active.
-    Replaces simple DB updates in your handlers.
+    Updates a DB field and triggers the Hot-Reload check.
     """
     allowed_fields = [
         'task_name', 'content_message_id', 'content_chat_id', 'pin_duration',
@@ -2594,12 +2695,11 @@ async def update_task_field(task_id: int, field: str, value: Any, context: Conte
         logger.error(f"Attempt to update invalid field: {field}")
         return
 
-    # Update DB field
+    # 1. Update DB
     sql = f"UPDATE tasks SET {field} = %s WHERE id = %s"
     db_query(sql, (value, task_id), commit=True)
-    logger.info(f"Task {task_id}: field {field} updated to {value}")
 
-    # --- HOT RELOAD TRIGGER ---
+    # 2. Trigger Hot Reload (Auto-activate if already active)
     await refresh_task_jobs(task_id, context)
 
 
@@ -4032,9 +4132,8 @@ async def task_ask_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def task_receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Получено название задачи"""
+    """Updates name and triggers hot-reload if active"""
     user_id = update.message.from_user.id
-
     task_id = get_or_create_task_id(user_id, context)
 
     if not task_id:
@@ -4042,10 +4141,9 @@ async def task_receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return TASK_CONSTRUCTOR
 
     task_name = update.message.text.strip()
-    await update_task_field(task_id, 'task_name', task_name, context)
 
-    # --- HOT RELOAD ---
-    await refresh_task_jobs(task_id, context)
+    # This triggers the Hot Reload via update_task_field -> refresh_task_jobs
+    await update_task_field(task_id, 'task_name', task_name, context)
 
     await update.message.reply_text(get_text('task_name_saved', context))
     return await show_task_constructor(update, context)
@@ -4415,7 +4513,6 @@ async def calendar_day_select(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         schedules = get_task_schedules(task_id)
         times = list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']]))
-
         if times:
             for time_str in times:
                 add_task_schedule(task_id, 'datetime', schedule_date=date_str, schedule_time=time_str)
@@ -4628,10 +4725,10 @@ async def time_slot_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Ideally, we clean up: if we have a date without time, and add time, we update it.
         # For simplicity based on previous logic:
 
+        dates = [s for s in schedules if s['schedule_date']]
         if dates:
             unique_dates_data = {d['schedule_date'] for d in dates}
             for date_val in unique_dates_data:
-                # Check if this specific combo exists to avoid dupes (though DB might handle it)
                 add_task_schedule(task_id, 'datetime', schedule_date=date_val, schedule_time=time_str)
         else:
             add_task_schedule(task_id, 'time', schedule_time=time_str)
@@ -4830,6 +4927,9 @@ async def time_receive_custom(update: Update, context: ContextTypes.DEFAULT_TYPE
                 add_task_schedule(task_id, 'datetime', schedule_date=date_val, schedule_time=time_str)
         else:
             add_task_schedule(task_id, 'time', schedule_time=time_str)
+
+    # --- TRIGGER HOT RELOAD ---
+    await refresh_task_jobs(task_id, context)
 
     await update.message.reply_text(get_text('time_saved', context))
     return await show_task_constructor(update, context)
@@ -6200,7 +6300,12 @@ def main():
     async def post_init(app: Application):
         await restore_active_tasks(app)
 
-    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    application = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .post_init(post_init)
+        .build()
+    )
 
     # --- ConversationHandler ---
 
