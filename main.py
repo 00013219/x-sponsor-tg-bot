@@ -2580,7 +2580,10 @@ def get_task_details(task_id: int) -> Optional[Dict]:
 
 
 async def update_task_field(task_id: int, field: str, value: Any, context: ContextTypes.DEFAULT_TYPE):
-    """Updates a task field and Hot-Reloads the scheduler if the task is active."""
+    """
+    Updates a task field and Hot-Reloads the scheduler if the task is active.
+    Replaces simple DB updates in your handlers.
+    """
     allowed_fields = [
         'task_name', 'content_message_id', 'content_chat_id', 'pin_duration',
         'pin_notify', 'auto_delete_hours', 'report_enabled',
@@ -2598,7 +2601,6 @@ async def update_task_field(task_id: int, field: str, value: Any, context: Conte
 
     # --- HOT RELOAD TRIGGER ---
     await refresh_task_jobs(task_id, context)
-
 
 
 def get_user_tasks(user_id: int) -> List[Dict]:
@@ -6196,16 +6198,9 @@ def main():
     init_db()
 
     async def post_init(app: Application):
-        # Restore tasks when the bot starts
         await restore_active_tasks(app)
 
-        # Send a notification to Owner (Optional)
-        try:
-            await app.bot.send_message(chat_id=OWNER_ID, text="🤖 Bot restarted. Active tasks restored.")
-        except:
-            pass
-
-    application = Application.builder().token(BOT_TOKEN).build()
+    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
     # --- ConversationHandler ---
 
