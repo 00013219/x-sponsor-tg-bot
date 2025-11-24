@@ -443,8 +443,15 @@ TEXTS = {
         'month_1': "Январь", 'month_2': "Февраль", 'month_3': "Март", 'month_4': "Апрель",
         'month_5': "Май", 'month_6': "Июнь", 'month_7': "Июль", 'month_8': "Август",
         'month_9': "Сентябрь", 'month_10': "Октябрь", 'month_11': "Ноябрь", 'month_12': "Декабрь",
-        'error_msg_too_long_text': "❌ Ошибка: Пост только текст до 4096 знаков с учётом пробелов. Сейчас: {count}.",
-        'error_msg_too_long_caption': "❌ Ошибка: Пост с медиа максимум 1024знака с учётом пробелов. Сейчас: {count}.",
+
+        'error_msg_too_long_text_real': "Ваше сообщение слишком длинное: {count} символов. Максимум — 4096.",
+        'error_msg_too_long_caption_real': "Подпись слишком длинная: {count} символов. Максимум — 1024.",
+
+        'error_msg_text_truncated': "Ваше сообщение было обрезано Telegram, так как превышало допустимый лимит.",
+        'error_msg_caption_truncated': "Ваша подпись была обрезана Telegram, так как превышала допустимый лимит.",
+
+        'error_msg_text_split': "Ваш текст превышает лимит Telegram и был автоматически разделён на части. Пожалуйста, сократите сообщение.",
+        'error_msg_caption_split': "Ваша подпись превышает лимит Telegram и была автоматически разделена. Пожалуйста, сократите текст."
     },
     'en': {
         'welcome_lang': """🤖 Welcome to XSponsorBot!
@@ -761,8 +768,15 @@ Let's get started! Please select your language:""",
         'month_1': "January", 'month_2': "February", 'month_3': "March", 'month_4': "April",
         'month_5': "May", 'month_6': "June", 'month_7': "July", 'month_8': "August",
         'month_9': "September", 'month_10': "October", 'month_11': "November", 'month_12': "December",
-        'error_msg_too_long_text': "❌ Error: Post text exceeds Telegram limit (4096 chars). Current: {count}.",
-        'error_msg_too_long_caption': "❌ Error: Media caption exceeds Telegram limit (1024 chars). Current: {count}.",
+
+        'error_msg_too_long_text_real': "Your message is too long: {count} characters. Maximum allowed is 4096.",
+        'error_msg_too_long_caption_real': "Your caption is too long: {count} characters. Maximum allowed is 1024.",
+
+        'error_msg_text_truncated': "Your message was truncated by Telegram because it exceeded the allowed limit.",
+        'error_msg_caption_truncated': "Your caption was truncated by Telegram because it exceeded the allowed limit.",
+
+        'error_msg_text_split': "Your text exceeds Telegram’s limit and was automatically split into multiple parts. Please reduce its length.",
+        'error_msg_caption_split': "Your caption exceeds Telegram’s limit and was automatically split. Please reduce the text."
     },
     'es': {
         # ... (existing Spanish localizations) ...
@@ -4307,46 +4321,51 @@ async def task_delete_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     return await show_task_constructor(update, context)
 
 
+def validate_message_length(message, context):
+    text = message.text or ""
+    caption = message.caption or ""
+
+    # --- 1. Прямое превышение лимита (если вдруг Telegram пропустил) ---
+    if text and len(text) > 4096:
+        return False, get_text('error_msg_too_long_text_real', context).format(count=len(text))
+
+    if caption and len(caption) > 1024:
+        return False, get_text('error_msg_too_long_caption_real', context).format(count=len(caption))
+
+    # --- 2. Если Telegram обрезал текст (entities ломаются) ---
+    if message.entities:
+        for e in message.entities:
+            if e.offset + e.length > len(text):
+                return False, get_text('error_msg_text_truncated', context)
+
+    if message.caption_entities:
+        for e in message.caption_entities:
+            if e.offset + e.length > len(caption):
+                return False, get_text('error_msg_caption_truncated', context)
+
+    # --- 3. Telegram разбил длинный текст на несколько сообщений ---
+    if text and len(text) == 4096:
+        return False, get_text('error_msg_text_split', context)
+
+    if caption and len(caption) == 1024:
+        return False, get_text('error_msg_caption_split', context)
+
+    return True, None
+
+
 async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Получено сообщение для поста"""
-    task_id = context.user_data.get('current_task_id')
+    user_id = update.message.from_user.id
+    task_id = get_or_create_task_id(user_id, context)
+
     if not task_id:
         await update.message.reply_text(get_text('error_generic', context))
         return TASK_CONSTRUCTOR
 
-    # --- FIX TASK 10: Check Message Limits ---
-    if update.message.text and len(update.message.text) > 4096:
-        await update.message.reply_text(
-            get_text('error_msg_too_long_text', context).format(count=len(update.message.text)))
+    # ---- Проверка длины сообщения ----
+    ok, error_message = validate_message_length(update.message, context)
+    if not ok:
+        await update.message.reply_text(error_message)
         return TASK_SET_MESSAGE
-
-    if update.message.caption and len(update.message.caption) > 1024:
-        await update.message.reply_text(
-            get_text('error_msg_too_long_caption', context).format(count=len(update.message.caption)))
-        return TASK_SET_MESSAGE
-    # -----------------------------------------
-
-    # Сохраняем ID сообщения и chat_id
-    content_message_id = update.message.message_id
-    content_chat_id = update.message.chat_id
-
-    await update_task_field(task_id, 'content_message_id', content_message_id, context)
-    await update_task_field(task_id, 'content_chat_id', content_chat_id, context)
-
-    # --- АВТО-ГЕНЕРАЦИЯ ИМЕНИ ---
-    task = get_task_details(task_id)
-    if not task['task_name']:
-        msg_text = update.message.text or update.message.caption or "Фото/Видео без текста"
-        smart_name = generate_smart_name(msg_text, context, limit=3)
-        await update_task_field(task_id, 'task_name', smart_name, context)
-        await update.message.reply_text(get_text('task_message_saved', context) + f"\n📝 Авто-название: {smart_name}")
-    else:
-        await update.message.reply_text(get_text('task_message_saved', context))
-
-    # --- HOT RELOAD: Apply changes immediately if task is active ---
-    await refresh_task_jobs(task_id, context)
-
-    return await show_task_constructor(update, context)
 
 
 # --- Выбор Каналов ---
@@ -4590,7 +4609,9 @@ async def calendar_day_select(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Выбор дня в календаре с проверкой лимитов"""
     query = update.callback_query
 
-    task_id = context.user_data.get('current_task_id')
+    user_id = update.message.from_user.id
+    task_id = get_or_create_task_id(user_id, context)
+
     date_str = query.data.replace("calendar_day_", "")
 
     db_query("DELETE FROM task_schedules WHERE task_id = %s AND schedule_weekday IS NOT NULL",
@@ -4799,7 +4820,9 @@ async def time_slot_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     # Do not answer yet
 
-    task_id = context.user_data.get('current_task_id')
+    user_id = update.message.from_user.id
+    task_id = get_or_create_task_id(user_id, context)
+
     time_str = query.data.replace("time_select_", "")
 
     schedules = get_task_schedules(task_id)
@@ -4993,7 +5016,9 @@ async def time_custom(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def time_receive_custom(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Получение своего времени с проверкой лимитов"""
-    task_id = context.user_data.get('current_task_id')
+    user_id = update.message.from_user.id
+    task_id = get_or_create_task_id(user_id, context)
+
     if not task_id:
         await update.message.reply_text(get_text('error_generic', context))
         return TASK_CONSTRUCTOR
@@ -5153,7 +5178,8 @@ async def task_set_advertiser(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def task_receive_advertiser(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Получение username рекламодателя"""
-    task_id = context.user_data.get('current_task_id')
+    user_id = update.message.from_user.id
+    task_id = get_or_create_task_id(user_id, context)
     if not task_id:
         await update.message.reply_text(get_text('error_generic', context))
         return TASK_CONSTRUCTOR
