@@ -236,7 +236,6 @@ TEXTS = {
         'channel_remove_confirm': "Вы уверены, что хотите удалить канал **{title}** из списка ваших площадок?",
         'channel_remove_success': "🗑️ Канал **{title}** удален из ваших площадок.",
 
-
         'my_channels_title': "**🧩 Мои площадки**",
         'my_channels_footer': "**Инструкция:**\n1. Добавьте бота в канал или чат с правами админа.\n2. Нажмите на канал для удаления.",
         'my_channels_empty': "❌ У вас пока нет добавленных каналов.",
@@ -344,7 +343,6 @@ TEXTS = {
         'boss_ban_success': "🚫 Пользователь @{target_username} (ID: {target_id}) **забанен**. Все его активные задачи отменены.",
         'boss_unban_success': "✅ Пользователь @{target_username} (ID: {target_id}) **разбанен**.",
 
-
         'task_activated_title': "✅ Задача #{task_id} успешно активирована!",
         'task_activated_jobs_count': "Создано публикаций: {job_count}",
         'task_activated_schedule_info': "Публикации будут выполнены согласно расписанию",
@@ -434,6 +432,19 @@ TEXTS = {
         'notify_post_published_title': "✅ **Пост опубликован!**",
         'notify_post_published_channel': "📢 Канал:",
         'notify_post_published_task': "📝 Задача:",
+
+        # --- Timezones & Months (RU) ---
+        'tz_Madrid': "Мадрид",
+        'tz_Moscow': "Москва",
+        'tz_Kiev': "Киев",
+        'tz_Tashkent': "Ташкент",
+        'tz_Berlin': "Берлин",
+        'tz_Paris': "Париж",
+        'month_1': "Январь", 'month_2': "Февраль", 'month_3': "Март", 'month_4': "Апрель",
+        'month_5': "Май", 'month_6': "Июнь", 'month_7': "Июль", 'month_8': "Август",
+        'month_9': "Сентябрь", 'month_10': "Октябрь", 'month_11': "Ноябрь", 'month_12': "Декабрь",
+        'error_msg_too_long_text': "❌ Ошибка: Текст поста превышает лимит Telegram (4096 символов). Сейчас: {count}.",
+        'error_msg_too_long_caption': "❌ Ошибка: Подпись к медиа превышает лимит Telegram (1024 символа). Сейчас: {count}.",
     },
     'en': {
         'welcome_lang': """🤖 Welcome to XSponsorBot!
@@ -739,6 +750,19 @@ Let's get started! Please select your language:""",
         'notify_post_published_title': "✅ **Post Published!**",
         'notify_post_published_channel': "📢 Channel:",
         'notify_post_published_task': "📝 Task:",
+
+        # --- Timezones & Months (EN) ---
+        'tz_Madrid': "Madrid",
+        'tz_Moscow': "Moscow",
+        'tz_Kiev': "Kiev",
+        'tz_Tashkent': "Tashkent",
+        'tz_Berlin': "Berlin",
+        'tz_Paris': "Paris",
+        'month_1': "January", 'month_2': "February", 'month_3': "March", 'month_4': "April",
+        'month_5': "May", 'month_6': "June", 'month_7': "July", 'month_8': "August",
+        'month_9': "September", 'month_10': "October", 'month_11': "November", 'month_12': "December",
+        'error_msg_too_long_text': "❌ Error: Post text exceeds Telegram limit (4096 chars). Current: {count}.",
+        'error_msg_too_long_caption': "❌ Error: Media caption exceeds Telegram limit (1024 chars). Current: {count}.",
     },
     'es': {
         # ... (existing Spanish localizations) ...
@@ -1970,13 +1994,14 @@ Lassen Sie uns beginnen! Bitte wählen Sie Ihre Sprache:""",
 }
 
 # Города и их таймзоны с UTC offset
+# Города и их таймзоны с UTC offset
 TIMEZONES = {
-    "Мадрид": ("Europe/Madrid", "UTC+1"),
-    "Москва": ("Europe/Moscow", "UTC+3"),
-    "Киев": ("Europe/Kiev", "UTC+2"),
-    "Ташкент": ("Asia/Tashkent", "UTC+5"),
-    "Берлин": ("Europe/Berlin", "UTC+1"),
-    "Париж": ("Europe/Paris", "UTC+1"),
+    "Madrid": ("Europe/Madrid", "UTC+1"),
+    "Moscow": ("Europe/Moscow", "UTC+3"),
+    "Kiev": ("Europe/Kiev", "UTC+2"),
+    "Tashkent": ("Asia/Tashkent", "UTC+5"),
+    "Berlin": ("Europe/Berlin", "UTC+1"),
+    "Paris": ("Europe/Paris", "UTC+1"),
 }
 
 
@@ -2000,6 +2025,7 @@ def get_tariff_limits(tariff_name: str) -> dict:
     else:
         logger.warning(f"Не найден тариф '{tariff_name}' (key: {tariff_key}) в Enum, используется FREE.")
         return Tariff.FREE.value
+
 
 # --- Хелпер i18n ---
 def get_text(key: str, context: ContextTypes.DEFAULT_TYPE, lang: str = None) -> str:
@@ -2383,6 +2409,7 @@ async def refresh_task_jobs(task_id: int, context: ContextTypes.DEFAULT_TYPE):
         db_query("UPDATE tasks SET status = 'inactive' WHERE id = %s", (task_id,), commit=True)
         # Optionally notify user here
 
+
 # --- Инициализация БД (ПОЛНОСТЬЮ НОВАЯ СХЕМА) ---
 def init_db():
     """Создание таблиц в БД, если их нет (Схема под ТЗ)"""
@@ -2615,6 +2642,7 @@ def persistent_reply_keyboard(context: ContextTypes.DEFAULT_TYPE):
         one_time_keyboard=False
     )
 
+
 # --- Каналы ---
 def get_user_channels(user_id: int) -> List[Dict]:
     return db_query("""
@@ -2777,7 +2805,7 @@ def lang_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 
-def timezone_keyboard():
+def timezone_keyboard(context: ContextTypes.DEFAULT_TYPE):
     keyboard = []
     cities = list(TIMEZONES.keys())
 
@@ -2788,9 +2816,13 @@ def timezone_keyboard():
             if i + j < len(cities):
                 city = cities[i + j]
                 tz_name, utc_offset = TIMEZONES[city]
+
+                # Локализация названия города
+                city_localized = get_text(f"tz_{city}", context) or city
+
                 row.append(
                     InlineKeyboardButton(
-                        f"{city} ({utc_offset})",
+                        f"{city_localized} ({utc_offset})",
                         callback_data=f"tz_{tz_name}"
                     )
                 )
@@ -2864,7 +2896,10 @@ def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(get_text('task_set_advertiser_btn', context), callback_data="task_set_advertiser")],
         [InlineKeyboardButton(get_text('task_set_post_type_btn', context), callback_data="task_set_post_type")],
         [InlineKeyboardButton(get_text('task_delete_btn', context), callback_data="task_delete")],
-        [InlineKeyboardButton(get_text('back_to_main_menu_btn', context), callback_data="nav_main_menu")],
+        [
+            InlineKeyboardButton(get_text('back_btn', context), callback_data="nav_my_tasks"),
+            InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu")
+        ],
         [action_btn],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -2898,7 +2933,10 @@ def channels_selection_keyboard(context: ContextTypes.DEFAULT_TYPE, selected_cha
     keyboard = []
     for ch in channels:
         channel_id = ch['channel_id']
-        title = ch['channel_title'] or ch['channel_username'] or f"ID: {channel_id}"
+        raw_title = ch['channel_title'] or ch['channel_username'] or f"ID: {channel_id}"
+
+        # --- FIX: Truncate to 3 words ---
+        title = generate_smart_name(raw_title, context, limit=3)
 
         # Добавляем галочку если канал выбран
         prefix = "✅ " if channel_id in selected_channels else ""
@@ -2911,7 +2949,7 @@ def channels_selection_keyboard(context: ContextTypes.DEFAULT_TYPE, selected_cha
 
     keyboard.append([
         InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor"),
-        InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu") ]
+        InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu")]
     )
 
     return InlineKeyboardMarkup(keyboard)
@@ -2947,6 +2985,12 @@ def calendar_keyboard(
     # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
     keyboard = []
+
+    # --- FIX TASK 8: Month Name Header ---
+    month_name = get_text(f"month_{month}", context) or str(month)
+    header_row = [InlineKeyboardButton(f"{month_name} {year}", callback_data="ignore")]
+    keyboard.append(header_row)
+    # -------------------------------------
 
     # --- ИСПРАВЛЕНИЕ: Добавляем выбор дней недели (вместо статического заголовка) ---
     weekday_row = []
@@ -3006,6 +3050,7 @@ def calendar_keyboard(
     )
 
     return InlineKeyboardMarkup(keyboard)
+
 
 def time_selection_keyboard(context: ContextTypes.DEFAULT_TYPE, selected_times: List[str] = None):
     """Клавиатура выбора времени как на изображении"""
@@ -3084,7 +3129,8 @@ def boss_panel_keyboard(context: ContextTypes.DEFAULT_TYPE):
     """Клавиатура админ-панели (локализованная)"""
     keyboard = [
         [InlineKeyboardButton(get_text('boss_mailing_btn', context), callback_data="boss_mailing")],
-        [InlineKeyboardButton(get_text('boss_signature_btn', context), callback_data="boss_signature")], # <-- НОВАЯ КНОПКА
+        [InlineKeyboardButton(get_text('boss_signature_btn', context), callback_data="boss_signature")],
+        # <-- НОВАЯ КНОПКА
         [InlineKeyboardButton(get_text('boss_users_btn', context), callback_data="boss_users")],
         [InlineKeyboardButton(get_text('boss_stats_btn', context), callback_data="boss_stats")],
         # [InlineKeyboardButton(get_text('boss_limits_btn', context), callback_data="boss_limits")],
@@ -3224,6 +3270,7 @@ async def handle_reply_keyboard(update: Update, context: ContextTypes.DEFAULT_TY
         if context.user_data.get('user_id') == OWNER_ID:
             return await nav_boss(update, context)
 
+
 # --- 1. Процесс /start ---
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3253,7 +3300,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Если у юзера дефолтные настройки (либо он новый,
         # либо выбрал en/Moscow), показываем выбор языка.
         await update.message.reply_text(
-            TEXTS['ru']['welcome_lang'], # Показываем на RU, чтобы дать выбор
+            TEXTS['ru']['welcome_lang'],  # Показываем на RU, чтобы дать выбор
             reply_markup=lang_keyboard()
         )
         return START_SELECT_LANG
@@ -3272,7 +3319,7 @@ async def start_select_lang(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['language_code'] = lang
 
     text = get_text('select_timezone', context)
-    await query.edit_message_text(text, reply_markup=timezone_keyboard())
+    await query.edit_message_text(text, reply_markup=timezone_keyboard(context))
     return START_SELECT_TZ
 
 
@@ -3723,10 +3770,10 @@ async def nav_timezone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         message = query.message
         text = get_text('select_timezone', context)
-        await message.reply_text(text, reply_markup=timezone_keyboard())
+        await message.reply_text(text, reply_markup=timezone_keyboard(context))
     else:
         text = get_text('select_timezone', context)
-        await update.message.reply_text(text, reply_markup=timezone_keyboard())
+        await update.message.reply_text(text, reply_markup=timezone_keyboard(context))
     return START_SELECT_TZ
 
 
@@ -3942,8 +3989,40 @@ async def calendar_weekday_select(update: Update, context: ContextTypes.DEFAULT_
 def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
     """Form text for task constructor with Dynamic Traffic Light Status"""
     task_id = context.user_data.get('current_task_id')
+
+    # --- FIX TASK 7: Handle New Task (No ID) ---
     if not task_id:
-        return get_text('error_task_id_not_found', context)
+        # Return default "New Task" view
+        title = get_text('task_constructor_title', context)
+        status_val = f"🔴 {get_text('status_text_inactive', context)}"
+        task_name = get_text('task_default_name', context)
+
+        channels_status = get_text('status_not_selected', context)
+        message_status = get_text('status_not_set', context)
+        dates_text = get_text('status_not_selected', context)
+        weekdays_text = get_text('status_not_selected', context)
+        times_text = get_text('status_not_selected', context)
+        pin_text = get_text('status_no', context)
+        delete_text = get_text('status_no', context)
+        post_type_status = get_text('status_repost', context)
+        pin_notify_status = get_text('status_no', context)
+        report_status = get_text('status_no', context)
+        advertiser_text = get_text('status_not_set', context)
+
+        text = f"{title}\n\n"
+        text += f"**{get_text('task_status_label', context)}{status_val}**\n\n"
+        text += f"{task_name}\n"
+        text += f"{get_text('header_channels', context)}{channels_status}\n"
+        text += f"{get_text('header_message', context)}{message_status}\n"
+        text += f"{get_text('header_weekdays', context)}{weekdays_text}\n"
+        text += f"{get_text('header_time', context)}{times_text}\n"
+        text += f"{get_text('header_pin', context)}{pin_text}\n"
+        text += f"{get_text('header_autodelete', context)}{delete_text}\n"
+        text += f"{get_text('header_post_type', context)}{post_type_status}\n"
+        text += f"{get_text('header_pin_notify', context)}{pin_notify_status}\n"
+        text += f"{get_text('header_report', context)}{report_status}\n"
+        text += f"{get_text('header_advertiser', context)}{advertiser_text}\n"
+        return text
 
     task = get_task_details(task_id)
     if not task:
@@ -3971,7 +4050,9 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
         status_val = f"🔴 {get_text('status_text_inactive', context)}"
     # ---------------------------------------------
 
-    display_name = task['task_name'] if task['task_name'] else get_text('task_default_name', context)
+    # --- FIX TASK 6: Smart Name Truncation ---
+    raw_name = task['task_name'] if task['task_name'] else get_text('task_default_name', context)
+    display_name = generate_smart_name(raw_name, context, limit=4) if task['task_name'] else raw_name
 
     # Schedules
     schedules = get_task_schedules(task_id)
@@ -3992,7 +4073,8 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
             wd_names = wd_names_str.split(',')
             weekdays_text = "✅ " + ", ".join([wd_names[day] for day in unique_weekdays])
         except:
-            weekdays_text = get_text('status_weekdays_count', context).format(count=len(unique_weekdays), suffix=days_suffix)
+            weekdays_text = get_text('status_weekdays_count', context).format(count=len(unique_weekdays),
+                                                                              suffix=days_suffix)
 
     times_text = get_text('status_not_selected', context)
     unique_times = sorted(list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']])))
@@ -4006,11 +4088,13 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
     # Advertiser
     advertiser_text = get_text('status_not_set', context)
     if task['advertiser_user_id']:
-        advertiser_user = db_query("SELECT username FROM users WHERE user_id = %s", (task['advertiser_user_id'],), fetchone=True)
+        advertiser_user = db_query("SELECT username FROM users WHERE user_id = %s", (task['advertiser_user_id'],),
+                                   fetchone=True)
         if advertiser_user and advertiser_user.get('username'):
             advertiser_text = f"✅ @{advertiser_user['username']}"
         else:
-            advertiser_text = get_text('status_advertiser_id', context).format(advertiser_user_id=task['advertiser_user_id'])
+            advertiser_text = get_text('status_advertiser_id', context).format(
+                advertiser_user_id=task['advertiser_user_id'])
 
     if task['task_name']:
         task_name = task['task_name']
@@ -4023,22 +4107,31 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
 
     delete_text = get_text('status_no', context)
     if task['auto_delete_hours'] > 0:
-        delete_text = get_text('status_delete_duration', context).format(duration=task['auto_delete_hours'], suffix=hours_suffix_short)
+        delete_text = get_text('status_delete_duration', context).format(duration=task['auto_delete_hours'],
+                                                                         suffix=hours_suffix_short)
 
     status_yes = get_text('status_yes', context)
     status_no = get_text('status_no', context)
 
     pin_notify_status = status_yes if task['pin_notify'] else status_no
     report_status = status_yes if task['report_enabled'] else status_no
-    post_type_status = get_text('status_from_bot', context) if task['post_type'] == 'from_bot' else get_text('status_repost', context)
+    post_type_status = get_text('status_from_bot', context) if task['post_type'] == 'from_bot' else get_text(
+        'status_repost', context)
 
-    channels_status = get_text('status_dates_count', context).format(count=channels_count, suffix=count_suffix) if channels_count > 0 else get_text('status_not_selected', context)
-    message_status = get_text('status_set', context) if task['content_message_id'] else get_text('status_not_set', context)
+    channels_status = get_text('status_dates_count', context).format(count=channels_count,
+                                                                     suffix=count_suffix) if channels_count > 0 else get_text(
+        'status_not_selected', context)
+    message_status = get_text('status_set', context) if task['content_message_id'] else get_text('status_not_set',
+                                                                                                 context)
 
     title = get_text('task_constructor_title', context)
+    # --- FIX TASK 4: Add Task ID to Header ---
+    if task_id:
+        title += f" #{task_id}"
+
     text = f"{title}\n\n"
-    text += f"**{status_label}{status_val}**\n\n" # Dynamic Status
-    text += f"{task_name}\n"
+    text += f"**{status_label}{status_val}**\n\n"  # Dynamic Status
+    text += f"{display_name}\n"
     text += f"{get_text('header_channels', context)}{channels_status}\n"
     text += f"{get_text('header_message', context)}{message_status}\n"
 
@@ -4221,6 +4314,18 @@ async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(get_text('error_generic', context))
         return TASK_CONSTRUCTOR
 
+    # --- FIX TASK 10: Check Message Limits ---
+    if update.message.text and len(update.message.text) > 4096:
+        await update.message.reply_text(
+            get_text('error_msg_too_long_text', context).format(count=len(update.message.text)))
+        return TASK_SET_MESSAGE
+
+    if update.message.caption and len(update.message.caption) > 1024:
+        await update.message.reply_text(
+            get_text('error_msg_too_long_caption', context).format(count=len(update.message.caption)))
+        return TASK_SET_MESSAGE
+    # -----------------------------------------
+
     # Сохраняем ID сообщения и chat_id
     content_message_id = update.message.message_id
     content_chat_id = update.message.chat_id
@@ -4291,7 +4396,8 @@ async def task_toggle_channel(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # ... (rest of the function: updating keyboard) ...
     selected_channels = get_task_channels(task_id)
-    text = "📢 Choose channels for publication:\n(Click to select/deselect)"
+    # --- FIX: Use Localized Text ---
+    text = get_text('task_channels_title', context)
     await query.edit_message_text(
         text,
         reply_markup=channels_selection_keyboard(context, selected_channels)
@@ -4456,7 +4562,8 @@ async def calendar_navigation(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Добавляем инфо-текст
     text += get_text('calendar_info_weekdays', context)
     # --- ⬇️ FIXED LINE ⬇️ ---
-    text += get_text('calendar_info_limit_slots', context).format(max_time_slots=max_time_slots, tariff_name=limits['name'])
+    text += get_text('calendar_info_limit_slots', context).format(max_time_slots=max_time_slots,
+                                                                  tariff_name=limits['name'])
     # --- ⬆️ FIXED LINE ⬆️ ---
     text += get_text('calendar_weekdays_note', context)  # Пн Вт Ср...
 
@@ -4470,6 +4577,7 @@ async def calendar_navigation(update: Update, context: ContextTypes.DEFAULT_TYPE
         if "Message is not modified" not in str(e):
             logger.warning(f"Error in calendar navigation: {e}")
     return CALENDAR_VIEW
+
 
 async def calendar_ignore_past(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Нажатие на прошедшую дату в календаре"""
@@ -4520,8 +4628,6 @@ async def calendar_day_select(update: Update, context: ContextTypes.DEFAULT_TYPE
             add_task_schedule(task_id, 'date', schedule_date=date_str)
 
         await query.answer()
-
-
 
     # --- HOT RELOAD: Apply changes immediately if task is active ---
     await refresh_task_jobs(task_id, context)
@@ -4622,7 +4728,8 @@ async def calendar_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = ""  # Шапка пустая
     text += get_text('calendar_info_weekdays', context)
     # --- ⬇️ FIXED LINE ⬇️ ---
-    text += get_text('calendar_info_limit_slots', context).format(max_time_slots=max_time_slots, tariff_name=limits['name'])
+    text += get_text('calendar_info_limit_slots', context).format(max_time_slots=max_time_slots,
+                                                                  tariff_name=limits['name'])
     # --- ⬆️ FIXED LINE ⬆️ ---
     text += get_text('calendar_weekdays_note', context)
 
@@ -4799,7 +4906,8 @@ def create_publication_jobs_for_task(task_id: int, user_tz: str, application: Ap
             # Привязываем таймзону пользователя
             local_dt = naive_dt.replace(tzinfo=tz)
         except Exception as e:
-            logger.error(f"Ошибка комбинирования datetime для задачи {task_id}: {schedule_date} {schedule_time} с tz {user_tz}. Ошибка: {e}")
+            logger.error(
+                f"Ошибка комбинирования datetime для задачи {task_id}: {schedule_date} {schedule_time} с tz {user_tz}. Ошибка: {e}")
             continue
 
         # Конвертируем в UTC
@@ -4955,7 +5063,6 @@ async def time_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db_query("UPDATE task_schedules SET schedule_time = NULL WHERE task_id = %s",
              (task_id,), commit=True)
 
-
     # --- ИСПРАВЛЕНИЕ ЛОГИКИ ЛИМИТОВ ---
     user_tz = context.user_data.get('timezone', 'Europe/Moscow')
     user_tariff = context.user_data.get('tariff', 'free')
@@ -4981,7 +5088,7 @@ async def task_set_pin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Настройка закрепления"""
     query = update.callback_query
     await query.answer()
-    text = get_text('duration_ask_pin', context) # Localized
+    text = get_text('duration_ask_pin', context)  # Localized
     await query.edit_message_text(
         text,
         reply_markup=pin_duration_keyboard(context)
@@ -5008,7 +5115,7 @@ async def task_set_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Настройка автоудаления"""
     query = update.callback_query
     await query.answer()
-    text = get_text('duration_ask_delete', context) # Localized
+    text = get_text('duration_ask_delete', context)  # Localized
     await query.edit_message_text(
         text,
         reply_markup=delete_duration_keyboard(context)
@@ -5195,8 +5302,8 @@ async def task_delete_confirm_yes(update: Update, context: ContextTypes.DEFAULT_
     text = get_text('task_delete_success', context).format(name=escape_markdown(task_name), id=task_id)
     await query.edit_message_text(text)
 
-    # Возвращаемся в главное меню
-    return await show_main_menu(update, context)
+    # Возвращаемся в Мои задачи (FIX TASK 2)
+    return await nav_my_tasks(update, context)
 
 
 async def task_delete_confirm_no(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5844,6 +5951,7 @@ async def execute_delete_job(context: ContextTypes.DEFAULT_TYPE):
         if job_id:
             db_query("UPDATE publication_jobs SET status = 'deleted' WHERE id = %s", (job_id,), commit=True)
 
+
 async def execute_unpin_job(context: ContextTypes.DEFAULT_TYPE):
     """
     ИСПОЛНИТЕЛЬ (вызывается JobQueue)
@@ -6009,6 +6117,7 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Critical error executing job {job_id}: {e}", exc_info=True)
         db_query("UPDATE publication_jobs SET status = 'failed' WHERE id = %s", (job_id,), commit=True)
+
 
 # --- 6. Логика платежей (Stars) ---
 
@@ -6285,6 +6394,7 @@ async def restore_active_tasks(application: Application):
 
     logger.info(f"✅ Restored {len(active_tasks)} active tasks. Scheduled {count} future publications.")
 
+
 # --- 7. Основная функция (main) ---
 def main():
     """Запуск бота"""
@@ -6344,6 +6454,7 @@ def main():
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
             CallbackQueryHandler(task_constructor_entrypoint, pattern="^nav_new_task$"),
             CallbackQueryHandler(task_edit_entrypoint, pattern="^task_edit_"),
+            CallbackQueryHandler(nav_tariff, pattern="^nav_tariff$"),  # FIX TASK 1
             reply_button_handler  # <--- ДОБАВЛЕНО
         ],
         MY_CHANNELS: [
@@ -6419,6 +6530,7 @@ def main():
         # --- Конструктор Задач ---
         TASK_CONSTRUCTOR: [
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
+            CallbackQueryHandler(nav_my_tasks, pattern="^nav_my_tasks$"),  # FIX TASK 3
             CallbackQueryHandler(task_activate, pattern="^task_activate$"),
             CallbackQueryHandler(task_ask_name, pattern="^task_set_name$"),
             CallbackQueryHandler(task_ask_message, pattern="^task_set_message$"),
