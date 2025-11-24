@@ -3364,6 +3364,15 @@ async def nav_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query:
         await query.answer()
 
+    # Удаляем временное скопированное сообщение из чата (если оно есть)
+    temp_msg_id = context.user_data.get('temp_task_message_id')
+    if temp_msg_id and query:
+        try:
+            await context.bot.delete_message(chat_id=query.message.chat_id, message_id=temp_msg_id)
+        except Exception as e:
+            logger.warning(f"Не удалось удалить временное сообщение {temp_msg_id}: {e}")
+        context.user_data.pop('temp_task_message_id', None)
+
     if 'current_task_id' in context.user_data:
         del context.user_data['current_task_id']
 
@@ -3376,6 +3385,15 @@ async def nav_my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         await query.answer()
         message = query.message
+
+        # Удаляем временное скопированное сообщение из чата (если оно есть)
+        temp_msg_id = context.user_data.get('temp_task_message_id')
+        if temp_msg_id:
+            try:
+                await context.bot.delete_message(chat_id=query.message.chat_id, message_id=temp_msg_id)
+            except Exception as e:
+                logger.warning(f"Не удалось удалить временное сообщение {temp_msg_id}: {e}")
+            context.user_data.pop('temp_task_message_id', None)
     else:
         message = update.message
 
@@ -4167,6 +4185,24 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
 
 async def show_task_constructor(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает главный экран конструктора задач."""
+    # Удаляем временное скопированное сообщение из чата (если оно есть)
+    temp_msg_id = context.user_data.get('temp_task_message_id')
+    if temp_msg_id:
+        try:
+            # Определяем chat_id в зависимости от типа update
+            if update.callback_query:
+                chat_id = update.callback_query.message.chat_id
+            elif update.message:
+                chat_id = update.message.chat_id
+            else:
+                chat_id = None
+
+            if chat_id:
+                await context.bot.delete_message(chat_id=chat_id, message_id=temp_msg_id)
+        except Exception as e:
+            logger.warning(f"Не удалось удалить временное сообщение {temp_msg_id}: {e}")
+        context.user_data.pop('temp_task_message_id', None)
+
     text = get_task_constructor_text(context)
     await send_or_edit_message(update, text, task_constructor_keyboard(context))
     return TASK_CONSTRUCTOR
@@ -4221,6 +4257,16 @@ async def task_back_to_constructor(update: Update, context: ContextTypes.DEFAULT
     """Кнопка '⬅️ Назад' (возврат в конструктор)"""
     query = update.callback_query
     await query.answer()
+
+    # Удаляем временное скопированное сообщение из чата (если оно есть)
+    temp_msg_id = context.user_data.get('temp_task_message_id')
+    if temp_msg_id:
+        try:
+            await context.bot.delete_message(chat_id=query.message.chat_id, message_id=temp_msg_id)
+        except Exception as e:
+            logger.warning(f"Не удалось удалить временное сообщение {temp_msg_id}: {e}")
+        context.user_data.pop('temp_task_message_id', None)
+
     return await show_task_constructor(update, context)
 
 
@@ -4257,6 +4303,7 @@ async def task_receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # --- Установка Сообщения ---
+# --- Установка Сообщения ---
 async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Нажата кнопка '📝 Сообщение'"""
     query = update.callback_query
@@ -4265,8 +4312,18 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     task_id = context.user_data.get('current_task_id')
     task = get_task_details(task_id)
 
+    # Чтобы удалить предыдущее временное сообщение после выхода
+    previous_msg_id = context.user_data.get('temp_task_message_id')
+
+    if previous_msg_id:
+        try:
+            await context.bot.delete_message(chat_id=query.message.chat_id, message_id=previous_msg_id)
+        except Exception as e:
+            logger.warning(f"Не удалось удалить временное сообщение {previous_msg_id}: {e}")
+        context.user_data.pop('temp_task_message_id', None)
+
     if task and task['content_message_id']:
-        # Сообщение УЖЕ установлено. Показываем его.
+        # Сообщение уже установлено
         text = get_text('task_message_current_prompt', context)
 
         keyboard = [
@@ -4277,23 +4334,27 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         ]
 
+        # Отредактировать текст кнопок
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
         try:
             # Копируем сообщение, чтобы юзер его увидел
-            await context.bot.copy_message(
+            copied_message = await context.bot.copy_message(
                 chat_id=query.message.chat_id,
                 from_chat_id=task['content_chat_id'],
                 message_id=task['content_message_id']
             )
+            # Сохраняем ID временного сообщения, чтобы удалить его при выходе
+            context.user_data['temp_task_message_id'] = copied_message.message_id
+
         except Exception as e:
             logger.warning(f"Не удалось скопировать старое сообщение для task {task_id}: {e}")
             await query.message.reply_text(get_text('task_message_display_error', context))
 
-        return TASK_SET_MESSAGE  # Остаемся в том же состоянии, т.к. MessageHandler его поймает
+        return TASK_SET_MESSAGE  # Остаемся в том же состоянии
 
     else:
-        # Сообщение НЕ установлено. Просим его.
+        # Сообщение не установлено
         text = get_text('task_ask_message', context)
         await query.edit_message_text(
             text,
@@ -4312,6 +4373,15 @@ async def task_delete_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_text(get_text('error_generic', context))
         return await show_task_constructor(update, context)  # Failsafe
 
+    # Удаляем временное скопированное сообщение из чата (если оно есть)
+    temp_msg_id = context.user_data.get('temp_task_message_id')
+    if temp_msg_id:
+        try:
+            await context.bot.delete_message(chat_id=query.message.chat_id, message_id=temp_msg_id)
+        except Exception as e:
+            logger.warning(f"Не удалось удалить временное сообщение {temp_msg_id}: {e}")
+        context.user_data.pop('temp_task_message_id', None)
+
     await update_task_field(task_id, 'content_message_id', None, context)
     await update_task_field(task_id, 'content_chat_id', None, context)
 
@@ -4319,38 +4389,6 @@ async def task_delete_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # Возвращаемся в конструктор
     return await show_task_constructor(update, context)
-
-
-def validate_message_length(message, context):
-    text = message.text or ""
-    caption = message.caption or ""
-
-    # --- 1. Прямое превышение лимита (если вдруг Telegram пропустил) ---
-    if text and len(text) > 4096:
-        return False, get_text('error_msg_too_long_text_real', context).format(count=len(text))
-
-    if caption and len(caption) > 1024:
-        return False, get_text('error_msg_too_long_caption_real', context).format(count=len(caption))
-
-    # --- 2. Если Telegram обрезал текст (entities ломаются) ---
-    if message.entities:
-        for e in message.entities:
-            if e.offset + e.length > len(text):
-                return False, get_text('error_msg_text_truncated', context)
-
-    if message.caption_entities:
-        for e in message.caption_entities:
-            if e.offset + e.length > len(caption):
-                return False, get_text('error_msg_caption_truncated', context)
-
-    # --- 3. Telegram разбил длинный текст на несколько сообщений ---
-    if text and len(text) == 4096:
-        return False, get_text('error_msg_text_split', context)
-
-    if caption and len(caption) == 1024:
-        return False, get_text('error_msg_caption_split', context)
-
-    return True, None
 
 
 async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4362,10 +4400,31 @@ async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYP
         return TASK_CONSTRUCTOR
 
     # ---- Проверка длины сообщения ----
-    ok, error_message = validate_message_length(update.message, context)
-    if not ok:
-        await update.message.reply_text(error_message)
+    text = update.message.text or ""
+    caption = update.message.caption or ""
+
+    # Telegram реально не отдаёт больше 4096/1024, но проверяем на случай сторонних изменений
+    if len(text) > 4096:
+        await update.message.reply_text(
+            get_text('error_msg_too_long_text_real', context).format(count=len(text))
+        )
         return TASK_SET_MESSAGE
+
+    if len(caption) > 1024:
+        await update.message.reply_text(
+            get_text('error_msg_too_long_caption_real', context).format(count=len(caption))
+        )
+        return TASK_SET_MESSAGE
+
+    # ---- Сохраняем сообщения ----
+    content_message_id = update.message.message_id
+    content_chat_id = update.message.chat_id
+
+    await update_task_field(task_id, 'content_message_id', content_message_id, context)
+    await update_task_field(task_id, 'content_chat_id', content_chat_id, context)
+
+    await update.message.reply_text(get_text('task_message_saved', context))
+    return await show_task_constructor(update, context)
 
 
 # --- Выбор Каналов ---
@@ -5411,9 +5470,17 @@ async def task_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
         header = get_text('task_validation_header', context)
         error_text = f"{header}\n\n" + "\n".join(errors)
 
+        # Используем правильную клавиатуру - возврат в конструктор для исправления ошибок
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor"),
+                InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu")
+            ]
+        ])
+
         await query.edit_message_text(
             error_text,
-            reply_markup=back_to_constructor_keyboard(context)
+            reply_markup=keyboard
         )
         return TASK_CONSTRUCTOR
 
@@ -6571,6 +6638,7 @@ def main():
             CallbackQueryHandler(task_set_advertiser, pattern="^task_set_advertiser$"),
             CallbackQueryHandler(task_set_post_type, pattern="^task_set_post_type$"),
             CallbackQueryHandler(task_delete, pattern="^task_delete$"),
+            CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),  # Для возврата из ошибок валидации
             reply_button_handler  # <--- ДОБАВЛЕНО
         ],
 
