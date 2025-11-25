@@ -379,7 +379,7 @@ TEXTS = {
         'status_count_suffix': "шт.",
         'status_days_suffix': "дн.",
         'status_hours_suffix': "ч",
-        'status_hours_suffix_short': "h",
+        'status_hours_suffix_short': "ч",
         'status_dates_count': "✅ {count} {suffix}",
         'status_weekdays_count': "✅ {count} {suffix}",
         'status_times_count': "✅ {count} {suffix}",
@@ -2466,14 +2466,14 @@ def init_db():
                 CREATE TABLE IF NOT EXISTS tasks (
                     id SERIAL PRIMARY KEY,
                     user_id BIGINT REFERENCES users(user_id),
-                    task_name VARCHAR(255),
-                    content_message_id BIGINT,
-                    content_chat_id BIGINT,
+                    task_name VARCHAR(255) NULL,
+                    content_message_id BIGINT NULL,
+                    content_chat_id BIGINT NULL,
                     pin_duration INTEGER DEFAULT 0,
                     pin_notify BOOLEAN DEFAULT FALSE,
                     auto_delete_hours INTEGER DEFAULT 0,
                     report_enabled BOOLEAN DEFAULT FALSE,
-                    advertiser_user_id BIGINT,
+                    advertiser_user_id BIGINT NULL,
                     post_type VARCHAR(50) DEFAULT 'from_bot',
                     status VARCHAR(50) DEFAULT 'inactive',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -2882,17 +2882,83 @@ def bottom_navigation_keyboard(context: ContextTypes.DEFAULT_TYPE):
 
 
 def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
-    """Клавиатура конструктора (С кнопкой Стоп/Старт)"""
+    """Клавиатура конструктора (Dynamic Labels with Localization)"""
     task_id = context.user_data.get('current_task_id')
     task = get_task_details(task_id)
-    is_active = task and task['status'] == 'active'
 
-    # Нижняя кнопка действия
+    # --- Defaults ---
+    pin_val = 0
+    delete_val = 0
+    push_val = False
+    report_val = False
+    post_type = 'from_bot'
+    is_active = False
+
+    if task:
+        pin_val = task.get('pin_duration', 0)
+        delete_val = task.get('auto_delete_hours', 0)
+        push_val = task.get('pin_notify', False)
+        report_val = task.get('report_enabled', False)
+        post_type = task.get('post_type', 'from_bot')
+        is_active = task.get('status') == 'active'
+
+    # --- Localization Helper ---
+    lang = context.user_data.get('language_code', 'en')
+
+    # Map for short 'day' suffix (since 'status_days_suffix' in TEXTS is often full words like "days"/"jours")
+    short_days_map = {
+        'ru': 'д', 'en': 'd', 'es': 'd', 'fr': 'j', 'ua': 'д', 'de': 'T'
+    }
+    # Map for short 'hour' suffix (derived from TEXTS logic)
+    short_hours_map = {
+        'ru': 'ч', 'en': 'h', 'es': 'h', 'fr': 'h', 'ua': 'г', 'de': 'h'
+    }
+
+    s_d = short_days_map.get(lang, 'd')
+    s_h = short_hours_map.get(lang, 'h')
+
+    def format_duration(hours):
+        if hours <= 0:
+            # Returns localized "❌ No" / "❌ Нет" / "❌ Non"
+            return get_text('duration_no', context)
+        if hours % 24 == 0:
+            return f"{hours // 24}{s_d}"  # e.g. "3j" or "3T"
+        return f"{hours}{s_h}"  # e.g. "12h" or "12г"
+
+    # --- Dynamic Button Labels ---
+
+    # 1. Pin
+    lbl_pin = get_text('task_set_pin_btn', context)
+    val_pin = format_duration(pin_val)
+    btn_pin = f"{lbl_pin}: {val_pin}"
+
+    # 2. Push (Notify)
+    lbl_push = get_text('task_set_pin_notify_btn', context)
+    val_push = "✅" if push_val else "❌"
+    btn_push = f"{lbl_push}: {val_push}"
+
+    # 3. Auto-Delete
+    lbl_delete = get_text('task_set_delete_btn', context)
+    val_delete = format_duration(delete_val)
+    btn_delete = f"{lbl_delete}: {val_delete}"
+
+    # 4. Report
+    lbl_report = get_text('task_set_report_btn', context)
+    val_report = "✅" if report_val else "❌"
+    btn_report = f"{lbl_report}: {val_report}"
+
+    # 5. Post Type
+    lbl_type = get_text('task_set_post_type_btn', context)
+    val_type = "🤖" if post_type == 'from_bot' else "↪️"
+    btn_type = f"{lbl_type}: {val_type}"
+
+    # --- Action Button ---
     if is_active:
         action_btn = InlineKeyboardButton(get_text('task_btn_deactivate', context), callback_data="task_deactivate")
     else:
         action_btn = InlineKeyboardButton(get_text('task_activate_btn', context), callback_data="task_activate")
 
+    # --- Construct Keyboard ---
     keyboard = [
         [InlineKeyboardButton(get_text('task_set_name_btn', context), callback_data="task_set_name")],
         [InlineKeyboardButton(get_text('task_select_channels_btn', context), callback_data="task_select_channels")],
@@ -2902,13 +2968,13 @@ def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton(get_text('task_select_time_btn', context), callback_data="task_select_time")
         ],
         [
-            InlineKeyboardButton(get_text('task_set_pin_btn', context), callback_data="task_set_pin"),
-            InlineKeyboardButton(get_text('task_set_pin_notify_btn', context), callback_data="task_set_pin_notify")
+            InlineKeyboardButton(btn_pin, callback_data="task_set_pin"),
+            InlineKeyboardButton(btn_push, callback_data="task_set_pin_notify")
         ],
-        [InlineKeyboardButton(get_text('task_set_delete_btn', context), callback_data="task_set_delete")],
-        [InlineKeyboardButton(get_text('task_set_report_btn', context), callback_data="task_set_report")],
+        [InlineKeyboardButton(btn_delete, callback_data="task_set_delete")],
+        [InlineKeyboardButton(btn_report, callback_data="task_set_report")],
         [InlineKeyboardButton(get_text('task_set_advertiser_btn', context), callback_data="task_set_advertiser")],
-        [InlineKeyboardButton(get_text('task_set_post_type_btn', context), callback_data="task_set_post_type")],
+        [InlineKeyboardButton(btn_type, callback_data="task_set_post_type")],
         [InlineKeyboardButton(get_text('task_delete_btn', context), callback_data="task_delete")],
         [
             InlineKeyboardButton(get_text('back_btn', context), callback_data="nav_my_tasks"),
@@ -3104,38 +3170,62 @@ def time_selection_keyboard(context: ContextTypes.DEFAULT_TYPE, selected_times: 
     return InlineKeyboardMarkup(keyboard)
 
 
-def pin_duration_keyboard(context: ContextTypes.DEFAULT_TYPE):
-    """Клавиатура выбора длительности закрепления"""
-    keyboard = [
-        [InlineKeyboardButton(get_text('duration_12h', context), callback_data="pin_12")],
-        [InlineKeyboardButton(get_text('duration_24h', context), callback_data="pin_24")],
-        [InlineKeyboardButton(get_text('duration_48h', context), callback_data="pin_48")],
-        [InlineKeyboardButton(get_text('duration_3d', context), callback_data="pin_72")],
-        [InlineKeyboardButton(get_text('duration_7d', context), callback_data="pin_168")],
-        [InlineKeyboardButton(get_text('duration_no', context), callback_data="pin_0")],
-        [
-            InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor"),
-            InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu")
-        ]
+def pin_duration_keyboard(context: ContextTypes.DEFAULT_TYPE, current_duration: int = None):
+    """Клавиатура выбора длительности закрепления (с галочкой)"""
+    # Define options: (value, localization_key)
+    options = [
+        (12, 'duration_12h'),
+        (24, 'duration_24h'),
+        (48, 'duration_48h'),
+        (72, 'duration_3d'),
+        (168, 'duration_7d'),
+        (0, 'duration_no')
     ]
+
+    keyboard = []
+    for value, key in options:
+        text = get_text(key, context)
+        # Add checkmark if this is the currently selected value
+        if current_duration is not None and value == current_duration:
+            text = f"✅ {text}"
+
+        keyboard.append([InlineKeyboardButton(text, callback_data=f"pin_{value}")])
+
+    # Navigation buttons
+    keyboard.append([
+        InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor"),
+        InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu")
+    ])
+
     return InlineKeyboardMarkup(keyboard)
 
 
-def delete_duration_keyboard(context: ContextTypes.DEFAULT_TYPE):
-    """Клавиатура выбора длительности автоудаления"""
-    # Assuming the structure is similar to pin_duration_keyboard
-    keyboard = [
-        [InlineKeyboardButton(get_text('duration_12h', context), callback_data="delete_12")],
-        [InlineKeyboardButton(get_text('duration_24h', context), callback_data="delete_24")],
-        [InlineKeyboardButton(get_text('duration_48h', context), callback_data="delete_48")],
-        [InlineKeyboardButton(get_text('duration_3d', context), callback_data="delete_72")],
-        [InlineKeyboardButton(get_text('duration_7d', context), callback_data="delete_168")],
-        [InlineKeyboardButton(get_text('duration_no', context), callback_data="delete_0")],
-        [
-            InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor"),
-            InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu")
-        ]
+def delete_duration_keyboard(context: ContextTypes.DEFAULT_TYPE, current_duration: int = None):
+    """Клавиатура выбора длительности автоудаления (с галочкой)"""
+    # Define options: (value, localization_key)
+    options = [
+        (12, 'duration_12h'),
+        (24, 'duration_24h'),
+        (48, 'duration_48h'),
+        (72, 'duration_3d'),
+        (168, 'duration_7d'),
+        (0, 'duration_no')
     ]
+
+    keyboard = []
+    for value, key in options:
+        text = get_text(key, context)
+        # Add checkmark if this is the currently selected value
+        if current_duration is not None and value == current_duration:
+            text = f"✅ {text}"
+
+        keyboard.append([InlineKeyboardButton(text, callback_data=f"delete_{value}")])
+
+    # Navigation buttons
+    keyboard.append([
+        InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor"),
+        InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu")
+    ])
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -4019,12 +4109,11 @@ async def calendar_weekday_select(update: Update, context: ContextTypes.DEFAULT_
 
 
 def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
-    """Form text for task constructor with Dynamic Traffic Light Status"""
+    """Form text for task constructor with Dynamic Traffic Light Status and Smart Duration Formatting"""
     task_id = context.user_data.get('current_task_id')
 
-    # --- FIX TASK 7: Handle New Task (No ID) ---
+    # --- HANDLE NEW TASK (No ID) ---
     if not task_id:
-        # Return default "New Task" view
         title = get_text('task_constructor_title', context)
         status_val = f"🔴 {get_text('status_text_inactive', context)}"
         task_name = get_text('task_default_name', context)
@@ -4066,9 +4155,9 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
 
     # Suffixes
     count_suffix = get_text('status_count_suffix', context)
-    days_suffix = get_text('status_days_suffix', context)
-    hours_suffix = get_text('status_hours_suffix', context)
-    hours_suffix_short = get_text('status_hours_suffix_short', context)
+    days_suffix = get_text('status_days_suffix', context) # e.g., "d" or "days"
+    hours_suffix = get_text('status_hours_suffix', context) # e.g., "h"
+    hours_suffix_short = get_text('status_hours_suffix_short', context) # e.g., "h"
 
     # --- DETERMINE STATUS (Traffic Light Logic) ---
     status_label = get_text('task_status_label', context)
@@ -4080,9 +4169,8 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
         status_val = f"🟡 {get_text('status_text_finishing', context)}"
     else:
         status_val = f"🔴 {get_text('status_text_inactive', context)}"
-    # ---------------------------------------------
 
-    # --- FIX TASK 6: Smart Name Truncation ---
+    # --- Smart Name Truncation ---
     raw_name = task['task_name'] if task['task_name'] else get_text('task_default_name', context)
     display_name = generate_smart_name(raw_name, context, limit=4) if task['task_name'] else raw_name
 
@@ -4128,19 +4216,28 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
             advertiser_text = get_text('status_advertiser_id', context).format(
                 advertiser_user_id=task['advertiser_user_id'])
 
-    if task['task_name']:
-        task_name = task['task_name']
-    else:
-        task_name = get_text('task_default_name', context)
-
+    # --- MODIFIED: Pin Duration Formatting ---
     pin_text = get_text('status_no', context)
     if task['pin_duration'] > 0:
-        pin_text = get_text('status_pin_duration', context).format(duration=task['pin_duration'], suffix=hours_suffix)
+        if task['pin_duration'] % 24 == 0:
+            # Display in days
+            val = task['pin_duration'] // 24
+            pin_text = get_text('status_pin_duration', context).format(duration=val, suffix=days_suffix)
+        else:
+            # Display in hours
+            pin_text = get_text('status_pin_duration', context).format(duration=task['pin_duration'], suffix=hours_suffix)
 
+    # --- MODIFIED: Auto Delete Formatting ---
     delete_text = get_text('status_no', context)
     if task['auto_delete_hours'] > 0:
-        delete_text = get_text('status_delete_duration', context).format(duration=task['auto_delete_hours'],
-                                                                         suffix=hours_suffix_short)
+        if task['auto_delete_hours'] % 24 == 0:
+            # Display in days
+            val = task['auto_delete_hours'] // 24
+            delete_text = get_text('status_delete_duration', context).format(duration=val, suffix=days_suffix)
+        else:
+            # Display in hours
+            delete_text = get_text('status_delete_duration', context).format(duration=task['auto_delete_hours'],
+                                                                             suffix=hours_suffix_short)
 
     status_yes = get_text('status_yes', context)
     status_no = get_text('status_no', context)
@@ -4157,12 +4254,11 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
                                                                                                  context)
 
     title = get_text('task_constructor_title', context)
-    # --- FIX TASK 4: Add Task ID to Header ---
     if task_id:
         title += f" #{task_id}"
 
     text = f"{title}\n\n"
-    text += f"**{status_label}{status_val}**\n\n"  # Dynamic Status
+    text += f"**{status_label}{status_val}**\n\n"
     text += f"{display_name}\n"
     text += f"{get_text('header_channels', context)}{channels_status}\n"
     text += f"{get_text('header_message', context)}{message_status}\n"
@@ -4433,7 +4529,8 @@ async def task_select_channels(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
 
-    task_id = context.user_data.get('current_task_id')
+    user_id = query.from_user.id
+    task_id = get_or_create_task_id(user_id, context)
     selected_channels = get_task_channels(task_id)
 
     user_id = context.user_data['user_id']
@@ -4668,7 +4765,7 @@ async def calendar_day_select(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Выбор дня в календаре с проверкой лимитов"""
     query = update.callback_query
 
-    user_id = update.message.from_user.id
+    user_id = query.from_user.id
     task_id = get_or_create_task_id(user_id, context)
 
     date_str = query.data.replace("calendar_day_", "")
@@ -4879,7 +4976,7 @@ async def time_slot_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     # Do not answer yet
 
-    user_id = update.message.from_user.id
+    user_id = query.from_user.id
     task_id = get_or_create_task_id(user_id, context)
 
     time_str = query.data.replace("time_select_", "")
@@ -5169,56 +5266,92 @@ async def time_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Настройка закрепления ---
 async def task_set_pin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Настройка закрепления"""
+    """Настройка закрепления (Вход)"""
     query = update.callback_query
     await query.answer()
-    text = get_text('duration_ask_pin', context)  # Localized
+
+    # Get current value to show checkmark immediately
+    task_id = context.user_data.get('current_task_id')
+    task = get_task_details(task_id)
+    current_duration = task['pin_duration'] if task else 0
+
+    text = get_text('duration_ask_pin', context)
     await query.edit_message_text(
         text,
-        reply_markup=pin_duration_keyboard(context)
+        reply_markup=pin_duration_keyboard(context, current_duration)
     )
     return TASK_SET_PIN
 
 
 async def pin_duration_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Выбор длительности закрепления"""
+    """Выбор длительности закрепления (Действие)"""
     query = update.callback_query
-    await query.answer()
 
-    task_id = context.user_data.get('current_task_id')
+    user_id = query.from_user.id
+    task_id = get_or_create_task_id(user_id, context)
     duration = int(query.data.replace("pin_", ""))
 
+    # Update DB
     await update_task_field(task_id, 'pin_duration', duration, context)
 
-    await query.answer(get_text('task_pin_saved', context))
-    return await show_task_constructor(update, context)
+    # STAY on the same screen, but update the keyboard to move the checkmark
+    text = get_text('duration_ask_pin', context)
+    try:
+        await query.edit_message_text(
+            text,
+            reply_markup=pin_duration_keyboard(context, current_duration=duration)
+        )
+    except TelegramError:
+        # Ignore "Message is not modified" if user clicks the same button
+        pass
+
+    # Return the SAME state instead of calling show_task_constructor
+    return TASK_SET_PIN
 
 
 # --- Настройка автоудаления ---
 async def task_set_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Настройка автоудаления"""
+    """Настройка автоудаления (Вход)"""
     query = update.callback_query
     await query.answer()
-    text = get_text('duration_ask_delete', context)  # Localized
+
+    # Get current value to show checkmark immediately
+    task_id = context.user_data.get('current_task_id')
+    task = get_task_details(task_id)
+    current_duration = task['auto_delete_hours'] if task else 0
+
+    text = get_text('duration_ask_delete', context)
     await query.edit_message_text(
         text,
-        reply_markup=delete_duration_keyboard(context)
+        reply_markup=delete_duration_keyboard(context, current_duration)
     )
     return TASK_SET_DELETE
 
 
 async def delete_duration_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Выбор длительности автоудаления"""
+    """Выбор длительности автоудаления (Действие)"""
     query = update.callback_query
-    await query.answer()
 
-    task_id = context.user_data.get('current_task_id')
+    user_id = query.from_user.id
+    task_id = get_or_create_task_id(user_id, context)
     duration = int(query.data.replace("delete_", ""))
 
+    # Update DB
     await update_task_field(task_id, 'auto_delete_hours', duration, context)
 
-    await query.answer(get_text('task_delete_saved', context))
-    return await show_task_constructor(update, context)
+    # STAY on the same screen, but update the keyboard to move the checkmark
+    text = get_text('duration_ask_delete', context)
+    try:
+        await query.edit_message_text(
+            text,
+            reply_markup=delete_duration_keyboard(context, current_duration=duration)
+        )
+    except TelegramError:
+        # Ignore "Message is not modified" if user clicks the same button
+        pass
+
+    # Return the SAME state instead of calling show_task_constructor
+    return TASK_SET_DELETE
 
 
 # --- Настройка рекламодателя ---
