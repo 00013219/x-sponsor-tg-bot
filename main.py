@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
+import json
 import os
 import logging
 from datetime import datetime, timedelta
@@ -9,7 +9,7 @@ import re
 import calendar
 from enum import Enum
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto, InputMediaVideo, InputMediaAudio, InputMediaDocument
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -29,7 +29,6 @@ from psycopg2.pool import SimpleConnectionPool
 from psycopg2 import errorcodes
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
 load_dotenv()
 
 # --- Настройка логирования ---
@@ -183,17 +182,17 @@ TEXTS = {
         'duration_48h': "48ч",
         'duration_3d': "3д",
         'duration_7d': "7д",
-        'duration_no': "❌",
+        'duration_no': "❌ Нет",
         'duration_ask_pin': "📌 Выберите длительность закрепления:",
         'duration_ask_delete': "🧹 Выберите длительность автоудаления:",
 
-        # --- Добавленные локализации ---
+        # --- Статусы и сообщения ---
         'status_set': "✅ Задано",
         'status_not_set': "❌ Не задано",
-        'status_from_bot': "От бота",
-        'status_repost': "Репост",
+        'status_from_bot': "От имени бота",
+        'status_repost': "Репост (от рекламодателя)",
         'error_generic': "❌ Произошла ошибка. Попробуйте снова.",
-        'task_message_saved': "Сообщение для публикации сохранено!",
+        'task_message_saved': "✅ Сообщение для публикации сохранено!",
         'task_name_saved': "✅ Название задачи сохранено!",
 
         'calendar_prev': "⬅️ Пред. месяц",
@@ -269,7 +268,7 @@ TEXTS = {
         'free_dates_empty': "У вас нет запланированных публикаций. Все даты свободны.",
         'free_dates_list_item': "• **{local_time}** - *{task_name}* (в @{channel_username})",
 
-        # --- НОВЫЕ ЛОКАЛИЗАЦИИ BOSS ПАНЕЛИ ---
+        # --- BOSS ПАНЕЛЬ ---
         'boss_no_access': "⛔️ У вас нет доступа к этой панели",
         'boss_quick_stats': "📊 Быстрая статистика:",
         'boss_total_users': "👥 Всего пользователей: {total_users}",
@@ -325,7 +324,7 @@ TEXTS = {
         'boss_logs_no_errors': "✅ Критических ошибок не обнаружено.",
         'boss_logs_info': "\n\nℹ️ Логи записываются в стандартный вывод приложения.\nДля просмотра полных логов используйте систему мониторинга хостинга.",
 
-        # --- НОВЫЕ ЛОКАЛИЗАЦИИ BOSS БАНА ---
+        # --- BOSS БАН ---
         'boss_ban_start_msg': "🚫 **Бан пользователя**\n\nОтправьте ID или @username пользователя, которого хотите забанить (или разбанить).",
         'boss_ban_user_not_found': "❌ Пользователь не найден. Попробуйте снова (ID или @username):",
         'boss_action_ban': "забанить",
@@ -455,7 +454,8 @@ TEXTS = {
 
         'task_message_preview_footer': 'Сообщение будет опубликовано как показано выше ⬆️',
         'dont_have_channels': 'У вас нет добавленных каналов. Сначала добавьте бота администратором в канал.',
-        'choose_channel': '📢 Выберите каналы для публикации:\n(Нажмите на канал чтобы выбрать/отменить)'
+        'choose_channel': '📢 Выберите каналы для публикации:\n(Нажмите на канал чтобы выбрать/отменить)',
+        'choose_options': 'Выберите действие'
     },
     'en': {
         'welcome_lang': """🤖 Welcome to XSponsorBot!
@@ -471,7 +471,7 @@ Let's get started! Please select your language:""",
         'task_ask_message': "📝 Send or forward the message you want to publish to the bot.\n(This can be text, photo, video, etc.)",
         'task_ask_advertiser': "🔗 Enter the advertiser's username (e.g. @username or user123):",
         'task_advertiser_saved': "✅ Advertiser saved!",
-        'task_advertiser_not_found': "❌ User with this username not found...",
+        'task_advertiser_not_found': "❌ No user found with this username.",
         'status_not_selected': "❌ Not selected",
         'status_yes': "✅ Yes",
         'status_no': "❌ No",
@@ -485,7 +485,7 @@ Let's get started! Please select your language:""",
         'nav_my_tasks_btn': "📋 My Tasks",
         'nav_channels_btn': "🧩 Platforms",
         'nav_free_dates_btn': "ℹ️ Free Dates",
-        'nav_tariff_btn': "💳 Tariff",
+        'nav_tariff_btn': "💳 Plan",
         'nav_boss_btn': "😎 Boss",
         'nav_language_btn': "🌐 Change Language",
         'nav_timezone_btn': "🕰️ Change Timezone",
@@ -517,11 +517,11 @@ Let's get started! Please select your language:""",
         'duration_ask_pin': "📌 Select pin duration:",
         'duration_ask_delete': "🧹 Select auto-delete duration:",
 
-        # --- Добавленные локализации ---
+        # --- Statuses and Messages ---
         'status_set': "✅ Set",
         'status_not_set': "❌ Not set",
-        'status_from_bot': "From bot's name",
-        'status_repost': "Repost from advertiser",
+        'status_from_bot': "On behalf of bot",
+        'status_repost': "Repost (from advertiser)",
         'error_generic': "❌ An error occurred. Please try again.",
         'task_message_saved': "✅ Message for publication saved!",
         'task_name_saved': "✅ Task name saved!",
@@ -559,9 +559,9 @@ Let's get started! Please select your language:""",
         'channel_remove_btn': "🗑️ Remove platform",
         'channel_back_btn': "⬅️ Back to channel list",
         'channel_actions_title': "🛠️ **Channel Management**",
-        'channel_ask_username': "🔗 Enter channel username (e.g. @channel_username). The bot must be an admin there with publishing rights.",
+        'channel_ask_username': "🔗 Enter channel username (e.g. @channel_username). The bot must be an administrator there with posting rights.",
         'channel_username_invalid': "❌ Invalid format. Please enter the channel username, starting with @ or without.",
-        'channel_add_error': "❌ Error adding channel. Make sure the bot is an administrator with publishing rights.",
+        'channel_add_error': "❌ Error adding channel. Make sure the bot is an administrator with posting rights.",
         'channel_add_success': "✅ Channel **{title}** successfully added!",
         'channel_remove_confirm': "Are you sure you want to remove channel **{title}** from your platform list?",
         'channel_remove_success': "🗑️ Channel **{title}** removed from your platforms.",
@@ -574,10 +574,10 @@ Let's get started! Please select your language:""",
         'post_type_from_bot': "From bot (Copy)",
         'post_type_repost': "Repost (Forward)",
 
-        'tariff_title': "💳 **Your Tariff**",
-        'tariff_current_status': "Your current tariff: **{name}**",
+        'tariff_title': "💳 **Your Plan**",
+        'tariff_current_status': "Your current plan: **{name}**",
         'tariff_tasks_limit': "Task limit: **{current}/{limit}**",
-        'tariff_upgrade_prompt': "You can upgrade your tariff:",
+        'tariff_upgrade_prompt': "You can upgrade your plan:",
         'tariff_details_template': "✅ Task limit: **{task_limit}**\n✅ Platform limit: **{channel_limit}**",
         'tariff_buy_btn': "Buy",
         'tariff_unlimited': "Unlimited",
@@ -589,7 +589,7 @@ Let's get started! Please select your language:""",
         'boss_stats_btn': "📊 Statistics",
         'boss_users_btn': "👥 Users",
         'boss_limits_btn': "🚨 Limits",
-        'boss_tariffs_btn': "💳 Tariffs",
+        'boss_tariffs_btn': "💳 Plans",
         'boss_ban_btn': "🚫 Ban",
         'boss_money_btn': "💰 Money",
         'boss_logs_btn': "📑 Logs",
@@ -599,13 +599,13 @@ Let's get started! Please select your language:""",
         'free_dates_empty': "You have no planned publications. All dates are free.",
         'free_dates_list_item': "• **{local_time}** - *{task_name}* (in @{channel_username})",
 
-        # --- NEW BOSS PANEL LOCALIZATIONS ---
+        # --- BOSS PANEL ---
         'boss_no_access': "⛔️ You do not have access to this panel",
         'boss_quick_stats': "📊 Quick Stats:",
         'boss_total_users': "👥 Total users: {total_users}",
         'boss_active_users': "✅ Active: {active_users}",
         'boss_active_tasks': "📝 Active tasks: {tasks_active}",
-        'boss_mailing_constructor': "📣 **Mailing Constructor**\n\nSend the message you want to send to all bot users.\n(Can be text, photo, video, etc.)",
+        'boss_mailing_constructor': "📣 **Mailing Constructor**\n\nSend the message you want to broadcast to all bot users.\n(Can be text, photo, video, etc.)",
         'boss_back_btn': "⬅️ Back",
         'boss_mailing_saved': "✅ Message saved!\n\nDo you want to exclude any users from the mailing?\nSend their username or ID separated by commas (e.g. @user1, 12345, @user2)\nOr press 'Skip' to send to everyone.",
         'boss_mailing_skip_btn': "⏭️ Skip",
@@ -622,8 +622,8 @@ Let's get started! Please select your language:""",
         'boss_mailing_sent_count': "📨 Sent: {sent}",
         'boss_mailing_failed_count': "❌ Errors: {failed}",
         'boss_back_to_boss': "⬅️ Back to Boss",
-        'boss_signature_title': "🌵 **Signature for FREE tariff**",
-        'boss_signature_info': "This signature will be added to posts of users on the FREE tariff.",
+        'boss_signature_title': "🌵 **Signature for FREE plan**",
+        'boss_signature_info': "This signature will be added to posts of users on the FREE plan.",
         'boss_signature_current': "📝 Current signature:\n{current_text}\n\nSend new signature text or click the buttons below:",
         'boss_signature_not_set': "Not set",
         'boss_signature_delete_btn': "🗑️ Delete Signature",
@@ -647,7 +647,7 @@ Let's get started! Please select your language:""",
         'boss_stats_db_warning': "\n\n⚠️ **WARNING**: Database size exceeds 100MB!",
         'boss_stats_refresh': "🔄 Refresh",
         'boss_money_title': "💰 **Financial Statistics**",
-        'boss_money_tariff_title': "📊 Users by tariffs:",
+        'boss_money_tariff_title': "📊 Users by plans:",
         'boss_money_tariff_item': "• {name}: {count} people ({price}⭐ each)",
         'boss_money_estimated_revenue': "\n💵 Estimated revenue: {revenue}⭐",
         'boss_money_note': "\n⚠️ Note: This is an estimated calculation.\nActual payment statistics are tracked via Telegram Payments.",
@@ -655,7 +655,7 @@ Let's get started! Please select your language:""",
         'boss_logs_no_errors': "✅ No critical errors found.",
         'boss_logs_info': "\n\nℹ️ Logs are written to the application's standard output.\nUse your hosting's monitoring system to view full logs.",
 
-        # --- NEW BOSS BAN LOCALIZATIONS ---
+        # --- BOSS BAN ---
         'boss_ban_start_msg': "🚫 **User Ban**\n\nPlease send the ID or @username of the user you want to ban (or unban).",
         'boss_ban_user_not_found': "❌ User not found. Please try again (ID or @username):",
         'boss_action_ban': "ban",
@@ -678,12 +678,12 @@ Let's get started! Please select your language:""",
         'task_activated_schedule_info': "Publications will be executed according to the schedule",
         'task_advertiser_notify': "📢 You have been set as the advertiser for the task \"{task_name}\". You will receive publication notifications.",
 
-        'payment_success_template': "✅ Payment was successful!\n\nTariff **{tariff_name}** activated.",
+        'payment_success_template': "✅ Payment was successful!\n\nPlan **{tariff_name}** activated.",
         'error_notify_user': "❌ Failed to notify user {user_id} about channel addition. The bot might be blocked.",
         'error_invoice_creation': "❌ Failed to create an invoice for payment. Try again later.",
-        'error_tariff_not_found': "❌ Error: Tariff not found.",
-        'error_tariff_cannot_buy': "❌ This tariff cannot be purchased.",
-        'invoice_title_template': "Payment for tariff '{tariff_name}'",
+        'error_tariff_not_found': "❌ Error: Plan not found.",
+        'error_tariff_cannot_buy': "❌ This plan cannot be purchased.",
+        'invoice_title_template': "Payment for plan '{tariff_name}'",
         'invoice_description_template': "Access to limits: {tasks} tasks, {time_slots} T, {date_slots} D",
         'precheckout_error': "Something went wrong...",
 
@@ -697,8 +697,8 @@ Let's get started! Please select your language:""",
         'calendar_header_dates': "📅 {month_year_str}: {dates_str}\n",
         'calendar_header_weekdays': "📅 Weekdays: {weekdays_str}\n",
         'calendar_info_weekdays': "*If you select weekdays, the schedule will repeat weekly\n",
-        'calendar_info_limit_slots': "*No more than {max_time_slots} time slots for tariff {tariff_name}\n\n",
-        'calendar_date_limit_alert': "❌ Tariff limit ({limits['name']}): no more than {max_dates} dates",
+        'calendar_info_limit_slots': "*No more than {max_time_slots} time slots for plan {tariff_name}\n\n",
+        'calendar_date_limit_alert': "❌ Plan limit ({limits['name']}): no more than {max_dates} dates",
         'calendar_weekdays_short': "Mo,Tu,We,Th,Fr,Sa,Su",
         'free_dates_header': "📅 **Free dates (no posts):**\n{free_dates_str}\n",
         'free_dates_none_60d': "No completely free dates in the next 60 days.",
@@ -728,11 +728,11 @@ Let's get started! Please select your language:""",
         'header_report': "📊 Report: ",
         'header_advertiser': "🔗 Advertiser: ",
 
-        'limit_error_tasks': "❌ Task limit reached ({current}/{max}) for tariff {tariff}.\nPlease delete old tasks or upgrade your tariff.",
-        'limit_error_channels': "❌ Channel limit reached ({current}/{max}) for tariff {tariff}.\nPlease remove old channels or upgrade your tariff.",
-        'limit_error_dates': "❌ Date limit reached ({current}/{max}) for tariff {tariff}.",
-        'limit_error_times': "❌ Time slot limit reached ({current}/{max}) for tariff {tariff}.",
-        'limit_error_weekdays': "❌ Weekday limit reached ({current}/{max}) for tariff {tariff}.",
+        'limit_error_tasks': "❌ Task limit reached ({current}/{max}) for plan {tariff}.\nPlease delete old tasks or upgrade your plan.",
+        'limit_error_channels': "❌ Channel limit reached ({current}/{max}) for plan {tariff}.\nPlease remove old channels or upgrade your plan.",
+        'limit_error_dates': "❌ Date limit reached ({current}/{max}) for plan {tariff}.",
+        'limit_error_times': "❌ Time slot limit reached ({current}/{max}) for plan {tariff}.",
+        'limit_error_weekdays': "❌ Weekday limit reached ({current}/{max}) for plan {tariff}.",
 
         'my_tasks_header': "📋 **My Tasks** (total: {count})\n\n{list_text}\n\n**Legend:**\n📊 Task Statuses:\n🟢 Active - running\n🟡 Finishing - awaiting auto-delete\n🔴 Inactive - stopped",
         'my_tasks_item_template': "{icon} #{id} • {name} • {status_text}",
@@ -740,7 +740,7 @@ Let's get started! Please select your language:""",
         'status_text_finishing': "Finishing",
         'status_text_inactive': "Inactive",
         'task_btn_template': "{icon} #{id} • {name}",
-        'task_tariff_info': "⭐ Tariff: {name}. Used: {current}/{max}",
+        'task_tariff_info': "⭐ Plan: {name}. Used: {current}/{max}",
         'task_status_label': "Status: ",
         'task_btn_deactivate': "🛑 STOP TASK",
         'task_deactivated_success': "🛑 Task stopped. All future posts cancelled.",
@@ -765,7 +765,7 @@ Let's get started! Please select your language:""",
         # --- Timezones & Months (EN) ---
         'tz_Madrid': "Madrid",
         'tz_Moscow': "Moscow",
-        'tz_Kiev': "Kiev",
+        'tz_Kiev': "Kyiv",
         'tz_Tashkent': "Tashkent",
         'tz_Berlin': "Berlin",
         'tz_Paris': "Paris",
@@ -784,10 +784,10 @@ Let's get started! Please select your language:""",
 
         'task_message_preview_footer': 'The message will be published as shown above ⬆️',
         'dont_have_channels': "You don't have any channels added. First, add the bot as an administrator to the channel.",
-        'choose_channel': '📢 Select the channels to publish:\n(Click on the channel to select/cancel)'
+        'choose_channel': '📢 Select the channels to publish:\n(Click on the channel to select/cancel)',
+        'choose_options': 'Choose options'
     },
     'es': {
-        # ... (existing Spanish localizations) ...
         'welcome_lang': """🤖 ¡Bienvenido a XSponsorBot!
 Ayudo a automatizar las publicaciones promocionales en los canales de Telegram.
 Puedes crear tareas, seleccionar canales para la colocación, configurar la hora de publicación, el anclaje, la eliminación automática y los informes.
@@ -816,7 +816,7 @@ Mi objetivo es hacer que tu colaboración con los anunciantes sea lo más eficie
         'nav_channels_btn': "🧩 Plataformas",
         'nav_free_dates_btn': "ℹ️ Fechas Libres",
         'nav_tariff_btn': "💳 Tarifa",
-        'nav_boss_btn': "😎 Jefe",
+        'nav_boss_btn': "😎 Boss",
         'nav_language_btn': "🌐 Cambiar Idioma",
         'nav_timezone_btn': "🕰️ Cambiar Zona Horaria",
         'nav_reports_btn': "☑️ Informes",
@@ -847,10 +847,10 @@ Mi objetivo es hacer que tu colaboración con los anunciantes sea lo más eficie
         'duration_ask_pin': "📌 Selecciona la duración del anclaje:",
         'duration_ask_delete': "🧹 Selecciona la duración de la eliminación automática:",
 
-        # --- Добавленные локализации ---
+        # --- Statuses and Messages ---
         'status_set': "✅ Establecido",
         'status_not_set': "❌ No establecido",
-        'status_from_bot': "Desde el nombre del bot",
+        'status_from_bot': "Como el bot",
         'status_repost': "Repost del anunciante",
         'error_generic': "❌ Ha ocurrido un error. Inténtalo de nuevo.",
         'task_message_saved': "✅ Mensaje para publicación guardado!",
@@ -913,7 +913,7 @@ Mi objetivo es hacer que tu colaboración con los anunciantes sea lo más eficie
         'tariff_unlimited': "Ilimitado",
         'reports_title': "☑️ **Informes**",
 
-        'boss_menu_title': "😎 **Panel Jefe**",
+        'boss_menu_title': "😎 **Panel Boss**",
         'boss_mailing_btn': "✉️ Envíos Masivos",
         'boss_signature_btn': "🌵 Firma (Gratis)",
         'boss_stats_btn': "📊 Estadísticas",
@@ -929,13 +929,13 @@ Mi objetivo es hacer que tu colaboración con los anunciantes sea lo más eficie
         'free_dates_empty': "No tienes publicaciones programadas. Todas las fechas están libres.",
         'free_dates_list_item': "• **{local_time}** - *{task_name}* (en @{channel_username})",
 
-        # --- NEW BOSS PANEL LOCALIZATIONS ---
+        # --- BOSS PANEL ---
         'boss_no_access': "⛔️ No tienes acceso a este panel",
         'boss_quick_stats': "📊 Estadísticas Rápidas:",
         'boss_total_users': "👥 Total de usuarios: {total_users}",
         'boss_active_users': "✅ Activos: {active_users}",
         'boss_active_tasks': "📝 Tareas activas: {tasks_active}",
-        'boss_mailing_constructor': "📣 **Constructor de Envío Masivo**\n\nEnvía el mensaje que deseas enviar a todos los usuarios del bot.\n(Puede ser texto, foto, video, etc.)",
+        'boss_mailing_constructor': "📣 **Constructor de Envío Masivo**\n\nEnvía el mensaje que deseas difundir a todos los usuarios del bot.\n(Puede ser texto, foto, video, etc.)",
         'boss_back_btn': "⬅️ Atrás",
         'boss_mailing_saved': "✅ Mensaje guardado!\n\n¿Quieres excluir a algún usuario del envío?\nEnvía su nombre de usuario o ID separados por comas (ej. @user1, 12345, @user2)\nO haz clic en 'Saltar' para enviar a todos.",
         'boss_mailing_skip_btn': "⏭️ Saltar",
@@ -951,7 +951,7 @@ Mi objetivo es hacer que tu colaboración con los anunciantes sea lo más eficie
         'boss_mailing_completed_title': "✅ **Envío Masivo completado!**",
         'boss_mailing_sent_count': "📨 Enviados: {sent}",
         'boss_mailing_failed_count': "❌ Errores: {failed}",
-        'boss_back_to_boss': "⬅️ Volver al Panel Jefe",
+        'boss_back_to_boss': "⬅️ Volver al Panel Boss",
         'boss_signature_title': "🌵 **Firma para Tarifa FREE**",
         'boss_signature_info': "Esta firma se añadirá a las publicaciones de los usuarios con tarifa FREE.",
         'boss_signature_current': "📝 Firma actual:\n{current_text}\n\nEnvía el nuevo texto de la firma o haz clic en los botones de abajo:",
@@ -985,7 +985,7 @@ Mi objetivo es hacer que tu colaboración con los anunciantes sea lo más eficie
         'boss_logs_no_errors': "✅ No se encontraron errores críticos.",
         'boss_logs_info': "\n\nℹ️ Los registros se escriben en la salida estándar de la aplicación.\nUtiliza el sistema de monitoreo de tu hosting para ver los registros completos.",
 
-        # --- NEW BOSS BAN LOCALIZATIONS ---
+        # --- BOSS BAN ---
         'boss_ban_start_msg': "🚫 **Bloquear Usuario**\n\nEnvía el ID o @username del usuario que deseas bloquear (o desbloquear).",
         'boss_ban_user_not_found': "❌ Usuario no encontrado. Inténtalo de nuevo (ID o @username):",
         'boss_action_ban': "bloquear",
@@ -1092,9 +1092,33 @@ Mi objetivo es hacer que tu colaboración con los anunciantes sea lo más eficie
         'notify_post_published_title': "✅ **¡Publicación enviada!**",
         'notify_post_published_channel': "📢 Canal:",
         'notify_post_published_task': "📝 Tarea:",
+
+        # --- Timezones & Months (ES) ---
+        'tz_Madrid': "Madrid",
+        'tz_Moscow': "Moscú",
+        'tz_Kiev': "Kiev",
+        'tz_Tashkent': "Tashkent",
+        'tz_Berlin': "Berlín",
+        'tz_Paris': "París",
+        'month_1': "Enero", 'month_2': "Febrero", 'month_3': "Marzo", 'month_4': "Abril",
+        'month_5': "Mayo", 'month_6': "Junio", 'month_7': "Julio", 'month_8': "Agosto",
+        'month_9': "Septiembre", 'month_10': "Octubre", 'month_11': "Noviembre", 'month_12': "Diciembre",
+
+        'error_msg_too_long_text_real': "Tu mensaje es demasiado largo: {count} caracteres. El máximo es 4096.",
+        'error_msg_too_long_caption_real': "El pie de foto es demasiado largo: {count} caracteres. El máximo es 1024.",
+
+        'error_msg_text_truncated': "Tu mensaje fue cortado por Telegram porque excedía el límite permitido.",
+        'error_msg_caption_truncated': "Tu pie de foto fue cortado por Telegram porque excedía el límite permitido.",
+
+        'error_msg_text_split': "Tu texto excede el límite de Telegram y se dividió automáticamente en varias partes. Por favor, reduce su longitud.",
+        'error_msg_caption_split': "Tu pie de foto excede el límite de Telegram y se dividió automáticamente. Por favor, reduce el texto.",
+
+        'task_message_preview_footer': 'El mensaje será publicado tal como se muestra arriba ⬆️',
+        'dont_have_channels': "No tienes canales añadidos. Primero, agrega al bot como administrador en el canal.",
+        'choose_channel': '📢 Selecciona los canales para publicar:\n(Haz clic en el canal para seleccionar/cancelar)',
+        'choose_options': 'Elige opciones'
     },
     'fr': {
-        # ... (existing French localizations) ...
         'welcome_lang': """🤖 Bienvenue sur XSponsorBot!
 J'aide à automatiser les publications promotionnelles dans les canaux Telegram.
 Vous pouvez créer des tâches, sélectionner des canaux pour le placement, configurer l'heure de publication, l'épinglage, la suppression automatique et les rapports.
@@ -1108,7 +1132,7 @@ Commençons! Veuillez sélectionner votre langue:""",
         'task_ask_message': "📝 Envoyez ou transférez le message que vous souhaitez publier au bot.\n(Cela peut être du texte, une photo, une vidéo, etc.)",
         'task_ask_advertiser': "🔗 Entrez le nom d'utilisateur de l'annonceur (ex. @username ou user123):",
         'task_advertiser_saved': "✅ Annonceur enregistré!",
-        'task_advertiser_not_found': "❌ Utilisateur introuvable. Assurez-vous que l'annonceur a démarré le bot avec /start",
+        'task_advertiser_not_found': "❌ Utilisateur avec ce nom d'utilisateur introuvable.",
         'status_not_selected': "❌ Non sélectionné",
         'status_yes': "✅ Oui",
         'status_no': "❌ Non",
@@ -1122,7 +1146,7 @@ Commençons! Veuillez sélectionner votre langue:""",
         'nav_my_tasks_btn': "📋 Mes Tâches",
         'nav_channels_btn': "🧩 Plateformes",
         'nav_free_dates_btn': "ℹ️ Dates Libres",
-        'nav_tariff_btn': "💳 Tarif",
+        'nav_tariff_btn': "💳 Abonnement",
         'nav_boss_btn': "😎 Boss",
         'nav_language_btn': "🌐 Changer Langue",
         'nav_timezone_btn': "🕰️ Changer Fuseau Horaire",
@@ -1154,7 +1178,7 @@ Commençons! Veuillez sélectionner votre langue:""",
         'duration_ask_pin': "📌 Sélectionnez la durée d'épinglage:",
         'duration_ask_delete': "🧹 Sélectionnez la durée de suppression automatique:",
 
-        # --- Добавленные локализации ---
+        # --- Statuses and Messages ---
         'status_set': "✅ Défini",
         'status_not_set': "❌ Non défini",
         'status_from_bot': "Au nom du bot",
@@ -1211,10 +1235,10 @@ Commençons! Veuillez sélectionner votre langue:""",
         'post_type_from_bot': "Du bot (Copie)",
         'post_type_repost': "Repost (Transfert)",
 
-        'tariff_title': "💳 **Votre Tarif**",
-        'tariff_current_status': "Votre tarif actuel: **{name}**",
+        'tariff_title': "💳 **Votre Abonnement**",
+        'tariff_current_status': "Votre abonnement actuel: **{name}**",
         'tariff_tasks_limit': "Limite de tâches: **{current}/{limit}**",
-        'tariff_upgrade_prompt': "Vous pouvez mettre à niveau votre tarif:",
+        'tariff_upgrade_prompt': "Vous pouvez mettre à niveau votre abonnement:",
         'tariff_details_template': "✅ Limite de tâches: **{task_limit}**\n✅ Limite de plateformes: **{channel_limit}**",
         'tariff_buy_btn': "Acheter",
         'tariff_unlimited': "Illimité",
@@ -1226,7 +1250,7 @@ Commençons! Veuillez sélectionner votre langue:""",
         'boss_stats_btn': "📊 Statistiques",
         'boss_users_btn': "👥 Utilisateurs",
         'boss_limits_btn': "🚨 Limites",
-        'boss_tariffs_btn': "💳 Tarifs",
+        'boss_tariffs_btn': "💳 Abonnements",
         'boss_ban_btn': "🚫 Bannir",
         'boss_money_btn': "💰 Argent",
         'boss_logs_btn': "📑 Journaux",
@@ -1236,13 +1260,13 @@ Commençons! Veuillez sélectionner votre langue:""",
         'free_dates_empty': "Vous n'avez aucune publication planifiée. Toutes les dates sont libres.",
         'free_dates_list_item': "• **{local_time}** - *{task_name}* (dans @{channel_username})",
 
-        # --- NEW BOSS PANEL LOCALIZATIONS ---
+        # --- BOSS PANEL ---
         'boss_no_access': "⛔️ Vous n'avez pas accès à ce panneau",
         'boss_quick_stats': "📊 Statistiques Rapides:",
         'boss_total_users': "👥 Total des utilisateurs: {total_users}",
         'boss_active_users': "✅ Actifs: {active_users}",
         'boss_active_tasks': "📝 Tâches actives: {tasks_active}",
-        'boss_mailing_constructor': "📣 **Constructeur d'Envoi**\n\nEnvoyez le message que vous souhaitez envoyer à tous les utilisateurs du bot.\n(Peut être du texte, une photo, une vidéo, etc.)",
+        'boss_mailing_constructor': "📣 **Constructeur d'Envoi**\n\nEnvoyez le message à diffuser à tous les utilisateurs du bot.\n(Peut être du texte, une photo, une vidéo, etc.)",
         'boss_back_btn': "⬅️ Retour",
         'boss_mailing_saved': "✅ Message enregistré!\n\nVoulez-vous exclure des utilisateurs de l'envoi ?\nEnvoyez leur nom d'utilisateur ou ID séparés par des virgules (ex: @user1, 12345, @user2)\nOu appuyez sur 'Passer' pour envoyer à tout le monde.",
         'boss_mailing_skip_btn': "⏭️ Passer",
@@ -1259,8 +1283,8 @@ Commençons! Veuillez sélectionner votre langue:""",
         'boss_mailing_sent_count': "📨 Envoyés: {sent}",
         'boss_mailing_failed_count': "❌ Erreurs: {failed}",
         'boss_back_to_boss': "⬅️ Retour au Boss",
-        'boss_signature_title': "🌵 **Signature pour Tarif FREE**",
-        'boss_signature_info': "Cette signature sera ajoutée aux publications des utilisateurs en tarif FREE.",
+        'boss_signature_title': "🌵 **Signature pour Abonnement FREE**",
+        'boss_signature_info': "Cette signature sera ajoutée aux publications des utilisateurs en abonnement FREE.",
         'boss_signature_current': "📝 Signature actuelle:\n{current_text}\n\nEnvoyez le nouveau texte de la signature ou cliquez sur les boutons ci-dessous:",
         'boss_signature_not_set': "Non définie",
         'boss_signature_delete_btn': "🗑️ Supprimer Signature",
@@ -1284,7 +1308,7 @@ Commençons! Veuillez sélectionner votre langue:""",
         'boss_stats_db_warning': "\n\n⚠️ **ATTENTION**: La taille de la base de données dépasse 100MB!",
         'boss_stats_refresh': "🔄 Actualiser",
         'boss_money_title': "💰 **Statistiques Financières**",
-        'boss_money_tariff_title': "📊 Utilisateurs par tarifs:",
+        'boss_money_tariff_title': "📊 Utilisateurs par abonnements:",
         'boss_money_tariff_item': "• {name}: {count} pers. ({price}⭐ chacun)",
         'boss_money_estimated_revenue': "\n💵 Revenu estimé: {revenue}⭐",
         'boss_money_note': "\n⚠️ Note: Ceci est un calcul estimé.\nLes statistiques de paiement réelles sont suivies via Telegram Payments.",
@@ -1292,7 +1316,7 @@ Commençons! Veuillez sélectionner votre langue:""",
         'boss_logs_no_errors': "✅ Aucune erreur critique trouvée.",
         'boss_logs_info': "\n\nℹ️ Les journaux sont écrits dans la sortie standard de l'application.\nUtilisez le système de surveillance de votre hébergement pour consulter les journaux complets.",
 
-        # --- NEW BOSS BAN LOCALIZATIONS ---
+        # --- BOSS BAN ---
         'boss_ban_start_msg': "🚫 **Bannir Utilisateur**\n\nVeuillez envoyer l'ID ou le @nom_utilisateur de l'utilisateur que vous souhaitez bannir (ou débannir).",
         'boss_ban_user_not_found': "❌ Utilisateur introuvable. Veuillez réessayer (ID ou @nom_utilisateur):",
         'boss_action_ban': "bannir",
@@ -1334,8 +1358,8 @@ Commençons! Veuillez sélectionner votre langue:""",
         'calendar_header_dates': "📅 {month_year_str}: {dates_str}\n",
         'calendar_header_weekdays': "📅 Jours de la semaine: {weekdays_str}\n",
         'calendar_info_weekdays': "*Si vous sélectionnez des jours de la semaine, le planning se répétera chaque semaine\n",
-        'calendar_info_limit_slots': "*Pas plus de {max_time_slots} créneaux horaires pour le tarif {tariff_name}\n\n",
-        'calendar_date_limit_alert': "❌ Limite du tarif ({limits['name']}): pas plus de {max_dates} dates",
+        'calendar_info_limit_slots': "*Pas plus de {max_time_slots} créneaux horaires pour l'abonnement {tariff_name}\n\n",
+        'calendar_date_limit_alert': "❌ Limite de l'abonnement ({limits['name']}): pas plus de {max_dates} dates",
         'calendar_weekdays_short': "Lu,Ma,Me,Je,Ve,Sa,Di",
         'free_dates_header': "📅 **Dates libres (sans posts):**\n{free_dates_str}\n",
         'free_dates_none_60d': "Aucune date complètement libre dans les 60 prochains jours.",
@@ -1365,11 +1389,11 @@ Commençons! Veuillez sélectionner votre langue:""",
         'header_report': "📊 Rapport: ",
         'header_advertiser': "🔗 Annonceur: ",
 
-        'limit_error_tasks': "❌ Limite de tâches atteinte ({current}/{max}) pour le tarif {tariff}.\nSupprimez les anciennes tâches ou mettez à jour votre tarif.",
-        'limit_error_channels': "❌ Limite de canaux atteinte ({current}/{max}) pour le tarif {tariff}.\nSupprimez les anciens canaux ou mettez à jour votre tarif.",
-        'limit_error_dates': "❌ Limite de dates atteinte ({current}/{max}) pour le tarif {tariff}.",
-        'limit_error_times': "❌ Limite de créneaux horaires atteinte ({current}/{max}) pour le tarif {tariff}.",
-        'limit_error_weekdays': "❌ Limite de jours de la semaine atteinte ({current}/{max}) pour le tarif {tariff}.",
+        'limit_error_tasks': "❌ Limite de tâches atteinte ({current}/{max}) pour l'abonnement {tariff}.\nSupprimez les anciennes tâches ou mettez à jour votre abonnement.",
+        'limit_error_channels': "❌ Limite de canaux atteinte ({current}/{max}) pour l'abonnement {tariff}.\nSupprimez les anciens canaux ou mettez à jour votre abonnement.",
+        'limit_error_dates': "❌ Limite de dates atteinte ({current}/{max}) pour l'abonnement {tariff}.",
+        'limit_error_times': "❌ Limite de créneaux horaires atteinte ({current}/{max}) pour l'abonnement {tariff}.",
+        'limit_error_weekdays': "❌ Limite de jours de la semaine atteinte ({current}/{max}) pour l'abonnement {tariff}.",
 
         'my_tasks_header': "📋 **Mes Tâches** (total: {count})\n\n{list_text}\n\n**Mini-Instruction:**\n📊 Statuts des Tâches:\n🟢 Actif - en cours d'exécution\n🟡 Finalisation - en attente de suppression automatique\n🔴 Inactif - arrêté",
         'my_tasks_item_template': "{icon} #{id} • {name} • {status_text}",
@@ -1377,7 +1401,7 @@ Commençons! Veuillez sélectionner votre langue:""",
         'status_text_finishing': "Finalisation",
         'status_text_inactive': "Inactif",
         'task_btn_template': "{icon} #{id} • {name}",
-        'task_tariff_info': "⭐ Tarif: {name}. Utilisé: {current}/{max}",
+        'task_tariff_info': "⭐ Abonnement: {name}. Utilisé: {current}/{max}",
         'task_status_label': "Statut: ",
         'task_btn_deactivate': "🛑 DÉSACTIVER LA TÂCHE",
         'task_deactivated_success': "🛑 Tâche arrêtée. Toutes les futures publications annulées.",
@@ -1399,23 +1423,47 @@ Commençons! Veuillez sélectionner votre langue:""",
         'notify_post_published_title': "✅ **Post publié !**",
         'notify_post_published_channel': "📢 Canal :",
         'notify_post_published_task': "📝 Tâche :",
+
+        # --- Timezones & Months (FR) ---
+        'tz_Madrid': "Madrid",
+        'tz_Moscow': "Moscou",
+        'tz_Kiev': "Kiev",
+        'tz_Tashkent': "Tachkent",
+        'tz_Berlin': "Berlin",
+        'tz_Paris': "Paris",
+        'month_1': "Janvier", 'month_2': "Février", 'month_3': "Mars", 'month_4': "Avril",
+        'month_5': "Mai", 'month_6': "Juin", 'month_7': "Juillet", 'month_8': "Août",
+        'month_9': "Septembre", 'month_10': "Octobre", 'month_11': "Novembre", 'month_12': "Décembre",
+
+        'error_msg_too_long_text_real': "Votre message est trop long: {count} caractères. Le maximum autorisé est 4096.",
+        'error_msg_too_long_caption_real': "Votre légende est trop longue: {count} caractères. Le maximum autorisé est 1024.",
+
+        'error_msg_text_truncated': "Votre message a été tronqué par Telegram car il dépassait la limite autorisée.",
+        'error_msg_caption_truncated': "Votre légende a été tronquée par Telegram car elle dépassait la limite autorisée.",
+
+        'error_msg_text_split': "Votre texte dépasse la limite de Telegram et a été automatiquement divisé en plusieurs parties. Veuillez réduire sa longueur.",
+        'error_msg_caption_split': "Votre légende dépasse la limite de Telegram et a été automatiquement divisée. Veuillez réduire le texte.",
+
+        'task_message_preview_footer': 'Le message sera publié comme indiqué ci-dessus ⬆️',
+        'dont_have_channels': "Vous n'avez pas de chaînes ajoutées. Ajoutez d'abord le bot en tant qu'administrateur à la chaîne.",
+        'choose_channel': '📢 Sélectionnez les chaînes pour publier :\n(Cliquez sur la chaîne pour sélectionner/annuler)',
+        'choose_options': 'Choisissez les options'
     },
     'ua': {
-        # ... (existing Ukrainian localizations) ...
         'welcome_lang': """🤖 Ласкаво просимо до XSponsorBot!
 Я допомагаю автоматизувати рекламні пости в Telegram каналах.
 Ви можете створювати завдання, обирати канали для розміщення, налаштовувати час публікації, закріплення, автовидалення та звіти.
 Моя мета — зробити вашу співпрацю з рекламодавцями максимально ефективною та зручною.
 Давайте почнемо! Оберіть вашу мову:""",
         'select_timezone': "Будь ласка, оберіть ваш часовий пояс:",
-        'main_menu': "📋 Головне меню\n\nОберіть дію:",
+        'main_menu': "📋 **Головне меню**\n\nОберіть дію:",
         'task_constructor_title': "🎯 Створення завдання",
         'task_default_name': " (Назву не задано)",
         'task_ask_name': "📝 Введіть назву завдання (наприклад, 'Реклама кафе'):",
         'task_ask_message': "📝 Надішліть або перешліть боту повідомлення, яке потрібно опублікувати.\n(Це може бути текст, фото, відео тощо)",
         'task_ask_advertiser': "🔗 Введіть username рекламодавця (наприклад, @username або user123):",
         'task_advertiser_saved': "✅ Рекламодавець збережений!",
-        'task_advertiser_not_found': "❌ Користувача з таким username не знайдено...",
+        'task_advertiser_not_found': "❌ Користувача з таким username не знайдено.",
         'status_not_selected': "❌ Не вибрано",
         'status_yes': "✅ Так",
         'status_no': "❌ Ні",
@@ -1461,7 +1509,7 @@ Commençons! Veuillez sélectionner votre langue:""",
         'duration_ask_pin': "📌 Оберіть тривалість закріплення:",
         'duration_ask_delete': "🧹 Оберіть тривалість автовидалення:",
 
-        # --- Добавленные локализации ---
+        # --- Статуси та повідомлення ---
         'status_set': "✅ Задано",
         'status_not_set': "❌ Не задано",
         'status_from_bot': "Від імені бота",
@@ -1543,7 +1591,7 @@ Commençons! Veuillez sélectionner votre langue:""",
         'free_dates_empty': "У вас немає запланованих публікацій. Усі дати вільні.",
         'free_dates_list_item': "• **{local_time}** - *{task_name}* (у @{channel_username})",
 
-        # --- NEW BOSS PANEL LOCALIZATIONS ---
+        # --- BOSS ПАНЕЛЬ ---
         'boss_no_access': "⛔️ У вас немає доступу до цієї панелі",
         'boss_quick_stats': "📊 Швидка статистика:",
         'boss_total_users': "👥 Всього користувачів: {total_users}",
@@ -1599,7 +1647,7 @@ Commençons! Veuillez sélectionner votre langue:""",
         'boss_logs_no_errors': "✅ Критичних помилок не виявлено.",
         'boss_logs_info': "\n\nℹ️ Логи записуються у стандартний вивід додатку.\nДля перегляду повних логів використовуйте систему моніторингу хостингу.",
 
-        # --- NEW BOSS BAN LOCALIZATIONS ---
+        # --- BOSS БАН ---
         'boss_ban_start_msg': "🚫 **Бан користувача**\n\nНадішліть ID або @username користувача, якого бажаєте заблокувати (або розблокувати).",
         'boss_ban_user_not_found': "❌ Користувача не знайдено. Спробуйте знову (ID або @username):",
         'boss_action_ban': "заблокувати",
@@ -1706,9 +1754,33 @@ Commençons! Veuillez sélectionner votre langue:""",
         'notify_post_published_title': "✅ **Пост опубліковано!**",
         'notify_post_published_channel': "📢 Канал:",
         'notify_post_published_task': "📝 Завдання:",
+
+        # --- Timezones & Months (UA) ---
+        'tz_Madrid': "Мадрид",
+        'tz_Moscow': "Москва",
+        'tz_Kiev': "Київ",
+        'tz_Tashkent': "Ташкент",
+        'tz_Berlin': "Берлін",
+        'tz_Paris': "Париж",
+        'month_1': "Січень", 'month_2': "Лютий", 'month_3': "Березень", 'month_4': "Квітень",
+        'month_5': "Травень", 'month_6': "Червень", 'month_7': "Липень", 'month_8': "Серпень",
+        'month_9': "Вересень", 'month_10': "Жовтень", 'month_11': "Листопад", 'month_12': "Грудень",
+
+        'error_msg_too_long_text_real': "Ваше повідомлення занадто довге: {count} символів. Максимум — 4096.",
+        'error_msg_too_long_caption_real': "Підпис занадто довгий: {count} символів. Максимум — 1024.",
+
+        'error_msg_text_truncated': "Ваше повідомлення було обрізано Telegram, оскільки перевищувало допустимий ліміт.",
+        'error_msg_caption_truncated': "Ваш підпис був обрізаний Telegram, оскільки перевищував допустимий ліміт.",
+
+        'error_msg_text_split': "Ваш текст перевищує ліміт Telegram і був автоматично розділений на частини. Будь ласка, скоротіть повідомлення.",
+        'error_msg_caption_split': "Ваш підпис перевищує ліміт Telegram і був автоматично розділений. Будь ласка, скоротіть текст.",
+
+        'task_message_preview_footer': 'Повідомлення буде опубліковано як показано вище ⬆️',
+        'dont_have_channels': 'У вас немає доданих каналів. Спочатку додайте бота адміністратором до каналу.',
+        'choose_channel': '📢 Виберіть канали для публікації:\n(Натисніть на канал, щоб вибрати/скасувати)',
+        'choose_options': 'Виберіть параметри'
     },
     'de': {
-        # ... (existing German localizations) ...
         'welcome_lang': """🤖 Willkommen beim XSponsorBot!
 Ich helfe bei der Automatisierung von Werbebeiträgen in Telegram-Kanälen.
 Sie können Aufgaben erstellen, Kanäle für die Platzierung auswählen, Veröffentlichungszeit, Anheften, automatische Löschung und Berichte konfigurieren.
@@ -1722,7 +1794,7 @@ Lassen Sie uns beginnen! Bitte wählen Sie Ihre Sprache:""",
         'task_ask_message': "📝 Sende oder leite die Nachricht, die du veröffentlichen möchtest, an den Bot weiter.\n(Dies kann Text, Foto, Video usw. sein)",
         'task_ask_advertiser': "🔗 Gib den Benutzernamen des Werbepartners ein (z.B. @username oder user123):",
         'task_advertiser_saved': "✅ Werbepartner gespeichert!",
-        'task_advertiser_not_found': "❌ Benutzer mit diesem Namen nicht gefunden...",
+        'task_advertiser_not_found': "❌ Benutzer mit diesem Benutzernamen nicht gefunden.",
         'status_not_selected': "❌ Nicht ausgewählt",
         'status_yes': "✅ Ja",
         'status_no': "❌ Nein",
@@ -1768,7 +1840,7 @@ Lassen Sie uns beginnen! Bitte wählen Sie Ihre Sprache:""",
         'duration_ask_pin': "📌 Wähle die Dauer des Anheftens:",
         'duration_ask_delete': "🧹 Wähle die Dauer der Auto-Löschung:",
 
-        # --- Добавленные локализации ---
+        # --- Statuses and Messages ---
         'status_set': "✅ Festgelegt",
         'status_not_set': "❌ Nicht festgelegt",
         'status_from_bot': "Im Namen des Bots",
@@ -1850,13 +1922,13 @@ Lassen Sie uns beginnen! Bitte wählen Sie Ihre Sprache:""",
         'free_dates_empty': "Sie haben keine geplanten Veröffentlichungen. Alle Termine sind frei.",
         'free_dates_list_item': "• **{local_time}** - *{task_name}* (in @{channel_username})",
 
-        # --- NEW BOSS PANEL LOCALIZATIONS ---
+        # --- BOSS PANEL ---
         'boss_no_access': "⛔️ Sie haben keinen Zugriff auf dieses Panel",
         'boss_quick_stats': "📊 Kurze Statistik:",
         'boss_total_users': "👥 Gesamte Benutzer: {total_users}",
         'boss_active_users': "✅ Aktiv: {active_users}",
         'boss_active_tasks': "📝 Aktive Aufgaben: {tasks_active}",
-        'boss_mailing_constructor': "📣 **Mailing-Konstruktor**\n\nSenden Sie die Nachricht, die Sie an alle Bot-Benutzer senden möchten.\n(Kann Text, Foto, Video usw. sein)",
+        'boss_mailing_constructor': "📣 **Mailing-Konstruktor**\n\nSenden Sie die Nachricht, die an alle Nutzer gesendet werden soll.\n(Kann Text, Foto, Video usw. sein)",
         'boss_back_btn': "⬅️ Zurück",
         'boss_mailing_saved': "✅ Nachricht gespeichert!\n\nMöchten Sie Benutzer vom Mailing ausschließen?\nSenden Sie deren Benutzernamen oder IDs durch Kommata getrennt (z.B. @user1, 12345, @user2)\nOder klicken Sie auf 'Überspringen', um an alle zu senden.",
         'boss_mailing_skip_btn': "⏭️ Überspringen",
@@ -1906,7 +1978,7 @@ Lassen Sie uns beginnen! Bitte wählen Sie Ihre Sprache:""",
         'boss_logs_no_errors': "✅ Keine kritischen Fehler gefunden.",
         'boss_logs_info': "\n\nℹ️ Protokolle werden in die Standardausgabe der Anwendung geschrieben.\nVerwenden Sie das Überwachungssystem Ihres Hostings, um die vollständigen Protokolle anzuzeigen.",
 
-        # --- NEW BOSS BAN LOCALIZATIONS ---
+        # --- BOSS BAN ---
         'boss_ban_start_msg': "🚫 **Benutzer Sperren**\n\nSenden Sie die ID oder den @Benutzernamen des Benutzers, den Sie sperren (oder entsperren) möchten.",
         'boss_ban_user_not_found': "❌ Benutzer nicht gefunden. Bitte versuchen Sie es erneut (ID oder @Benutzername):",
         'boss_action_ban': "sperren",
@@ -2012,6 +2084,31 @@ Lassen Sie uns beginnen! Bitte wählen Sie Ihre Sprache:""",
         'notify_post_published_title': "✅ **Beitrag veröffentlicht!**",
         'notify_post_published_channel': "📢 Kanal:",
         'notify_post_published_task': "📝 Aufgabe:",
+
+        # --- Timezones & Months (DE) ---
+        'tz_Madrid': "Madrid",
+        'tz_Moscow': "Moskau",
+        'tz_Kiev': "Kiew",
+        'tz_Tashkent': "Taschkent",
+        'tz_Berlin': "Berlin",
+        'tz_Paris': "Paris",
+        'month_1': "Januar", 'month_2': "Februar", 'month_3': "März", 'month_4': "April",
+        'month_5': "Mai", 'month_6': "Juni", 'month_7': "Juli", 'month_8': "August",
+        'month_9': "September", 'month_10': "Oktober", 'month_11': "November", 'month_12': "Dezember",
+
+        'error_msg_too_long_text_real': "Ihre Nachricht ist zu lang: {count} Zeichen. Maximal zulässig sind 4096.",
+        'error_msg_too_long_caption_real': "Ihre Bildunterschrift ist zu lang: {count} Zeichen. Maximal zulässig sind 1024.",
+
+        'error_msg_text_truncated': "Ihre Nachricht wurde von Telegram gekürzt, da sie das zulässige Limit überschritten hat.",
+        'error_msg_caption_truncated': "Ihre Bildunterschrift wurde von Telegram gekürzt, da sie das zulässige Limit überschritten hat.",
+
+        'error_msg_text_split': "Ihr Text überschreitet das Limit von Telegram und wurde automatisch in mehrere Teile aufgeteilt. Bitte kürzen Sie ihn.",
+        'error_msg_caption_split': "Ihre Bildunterschrift überschreitet das Limit von Telegram und wurde automatisch aufgeteilt. Bitte kürzen Sie den Text.",
+
+        'task_message_preview_footer': 'Die Nachricht wird wie oben gezeigt veröffentlicht ⬆️',
+        'dont_have_channels': "Sie haben keine Kanäle hinzugefügt. Fügen Sie zuerst den Bot als Administrator zum Kanal hinzu.",
+        'choose_channel': '📢 Wählen Sie die Kanäle zur Veröffentlichung aus:\n(Klicken Sie auf den Kanal, um ihn auszuwählen/abzuwählen)',
+        'choose_options': 'Optionen wählen'
     }
 }
 
@@ -2452,7 +2549,8 @@ def init_db():
                     timezone VARCHAR(100) DEFAULT 'Europe/Moscow',
                     tariff VARCHAR(50) DEFAULT 'free',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    is_active BOOLEAN DEFAULT TRUE
+                    is_active BOOLEAN DEFAULT TRUE,
+                    custom_limits JSONB DEFAULT '{}'::jsonb
                 )
             """)
 
@@ -2477,6 +2575,10 @@ def init_db():
                     task_name VARCHAR(255) NULL,
                     content_message_id BIGINT NULL,
                     content_chat_id BIGINT NULL,
+
+                    -- NEW: JSON field to store media group details (file_ids, types, caption)
+                    media_group_data JSONB NULL,
+
                     pin_duration INTEGER DEFAULT 0,
                     pin_notify BOOLEAN DEFAULT FALSE,
                     auto_delete_hours INTEGER DEFAULT 0,
@@ -2491,6 +2593,12 @@ def init_db():
             # --- MIGRATION: Ensure message_snippet column exists ---
             try:
                 cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS message_snippet VARCHAR(255)")
+            except psycopg2.Error:
+                conn.rollback()
+
+            # --- MIGRATION: Ensure media_group_data column exists ---
+            try:
+                cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS media_group_data JSONB")
             except psycopg2.Error:
                 conn.rollback()
             # -----------------------------------------------------
@@ -2551,6 +2659,15 @@ def init_db():
                     aps_job_id VARCHAR(255) UNIQUE,
                     status VARCHAR(50) DEFAULT 'pending',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Таблица настроек бота (для подписи)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS bot_settings (
+                    id INTEGER PRIMARY KEY DEFAULT 1,
+                    signature TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
 
@@ -4446,7 +4563,6 @@ async def task_receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # --- Установка Сообщения ---
-# --- Установка Сообщения ---
 async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Нажата кнопка '📝 Сообщение'"""
     query = update.callback_query
@@ -4486,25 +4602,75 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 2. Define Keyboard for the PREVIEW (Delete & Back)
         keyboard = [
             [InlineKeyboardButton(get_text('task_delete_message_btn', context), callback_data="task_delete_message")],
-            [
-                InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor"),
-            ]
+            [InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor")]
         ]
 
-        try:
-            # 3. Copy message (Preview) WITH buttons attached
-            copied_message = await context.bot.copy_message(
-                chat_id=query.message.chat_id,
-                from_chat_id=task['content_chat_id'],
-                message_id=task['content_message_id'],
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-            # Save ID of preview message
-            context.user_data['temp_task_message_id'] = copied_message.message_id
+        # 3. Check for Media Group (Album)
+        media_group_json = task.get('media_group_data')
 
-        except Exception as e:
-            logger.warning(f"Не удалось скопировать старое сообщение для task {task_id}: {e}")
-            await query.message.reply_text(get_text('task_message_display_error', context))
+        if media_group_json:
+            # === SHOWING MEDIA GROUP ===
+            try:
+                # Parse JSON if it's a string
+                media_data = media_group_json if isinstance(media_group_json, dict) else json.loads(media_group_json)
+
+                input_media = []
+                caption_to_use = media_data.get('caption', '')
+
+                # Reconstruct InputMedia objects
+                for i, f in enumerate(media_data['files']):
+                    media_obj = None
+                    # Assign caption only to the first item
+                    current_caption = caption_to_use if i == 0 else None
+
+                    if f['type'] == 'photo':
+                        media_obj = InputMediaPhoto(media=f['media'], caption=current_caption,
+                                                    has_spoiler=f.get('has_spoiler', False))
+                    elif f['type'] == 'video':
+                        media_obj = InputMediaVideo(media=f['media'], caption=current_caption,
+                                                    has_spoiler=f.get('has_spoiler', False))
+                    elif f['type'] == 'document':
+                        media_obj = InputMediaDocument(media=f['media'], caption=current_caption)
+                    elif f['type'] == 'audio':
+                        media_obj = InputMediaAudio(media=f['media'], caption=current_caption)
+
+                    if media_obj:
+                        input_media.append(media_obj)
+
+                # Send the album
+                if input_media:
+                    await context.bot.send_media_group(chat_id=query.message.chat_id, media=input_media)
+
+                # Send separate message for buttons (Albums can't have buttons)
+                control_msg = await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=f"{get_text('choose_options', context)}",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+
+                # Save control message ID for cleanup
+                context.user_data['temp_task_message_id'] = control_msg.message_id
+
+            except Exception as e:
+                logger.error(f"Failed to preview media group: {e}")
+                await query.message.reply_text("⚠️ Error displaying full album preview.")
+
+        else:
+            # === SHOWING SINGLE MESSAGE ===
+            try:
+                # Copy message (Preview) WITH buttons attached
+                copied_message = await context.bot.copy_message(
+                    chat_id=query.message.chat_id,
+                    from_chat_id=task['content_chat_id'],
+                    message_id=task['content_message_id'],
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                # Save ID of preview message
+                context.user_data['temp_task_message_id'] = copied_message.message_id
+
+            except Exception as e:
+                logger.warning(f"Не удалось скопировать старое сообщение для task {task_id}: {e}")
+                await query.message.reply_text(get_text('task_message_display_error', context))
 
         return TASK_SET_MESSAGE
 
@@ -4542,8 +4708,49 @@ async def task_delete_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handles receiving a message for the task.
+    Handles receiving a message (or media group) for the task.
     """
+    user_id = update.message.from_user.id
+    chat_id = update.effective_chat.id
+
+    # Check if this message is part of a media group
+    if update.message.media_group_id:
+        media_group_id = update.message.media_group_id
+
+        # Initialize buffer if not exists
+        if 'media_group_buffer' not in context.user_data:
+            context.user_data['media_group_buffer'] = {}
+
+        if media_group_id not in context.user_data['media_group_buffer']:
+            context.user_data['media_group_buffer'][media_group_id] = []
+
+        # Add the current message object to the buffer
+        context.user_data['media_group_buffer'][media_group_id].append(update.message)
+
+        # Schedule the processing job (debounce)
+        # We use a unique job name based on media_group_id to prevent duplicates
+        job_name = f"process_mg_{media_group_id}"
+        existing_jobs = context.job_queue.get_jobs_by_name(job_name)
+
+        if not existing_jobs:
+            # Schedule execution in 2 seconds
+            # IMPORTANT: We MUST pass user_id and chat_id here so context.user_data is available in the job
+            context.job_queue.run_once(
+                process_media_group,
+                when=2,
+                data={'media_group_id': media_group_id},
+                name=job_name,
+                user_id=user_id,  # <--- FIX: Enables context.user_data in callback
+                chat_id=chat_id  # <--- FIX: Enables context.chat_data in callback
+            )
+        return TASK_SET_MESSAGE
+
+    # --- Standard Single Message Logic (Existing) ---
+    return await save_single_task_message(update, context)
+
+
+async def save_single_task_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Helper to save a standard single message (Refactored from original)"""
     user_id = update.message.from_user.id
     task_id = get_or_create_task_id(user_id, context)
 
@@ -4571,66 +4778,232 @@ async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             content_text = "📦 [Media]"
 
-    # Generate snippet (existing logic)
+    # Generate snippet
     words = content_text.split()
-    snippet = " ".join(words[:4])
-    if len(words) > 4:
-        snippet += "..."
+    snippet = " ".join(words[:4]) + ("..." if len(words) > 4 else "")
 
-    # --- NEW: Set Task Name if not given yet (First 4 words) ---
+    # Set Task Name if empty
     task = get_task_details(task_id)
     if not task.get('task_name'):
-        # Extract first 4 words
-        name_words = content_text.split()
-        if not name_words:
-            # Fallback if content_text was empty but media exists (use the placeholder from snippet)
-            new_name = snippet
-        else:
-            new_name = " ".join(name_words[:4])
+        new_name = snippet[:200] if snippet else "New Task"
+        await update_task_field(task_id, 'task_name', new_name, context)
 
-        # Safety truncate
-        if len(new_name) > 200:
-            new_name = new_name[:200]
-
-        if new_name:
-            await update_task_field(task_id, 'task_name', new_name, context)
-    # -----------------------------------------------------------
-
-    # Save to DB
+    # Save to DB (Clear media_group_data if switching to single message)
     content_message_id = message.message_id
     content_chat_id = message.chat_id
 
     await update_task_field(task_id, 'content_message_id', content_message_id, context)
     await update_task_field(task_id, 'content_chat_id', content_chat_id, context)
-    db_query("UPDATE tasks SET message_snippet = %s WHERE id = %s", (snippet, task_id), commit=True)
 
-    # Success & Preview Logic
+    # Directly update fields that update_task_field doesn't handle specifically
+    db_query("UPDATE tasks SET message_snippet = %s, media_group_data = NULL WHERE id = %s",
+             (snippet, task_id), commit=True)
+
+    # UI Feedback
+    await send_task_preview(user_id, task_id, context, is_group=False)
+    return TASK_SET_MESSAGE
+
+
+async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Job that runs after a short delay to process a buffered media group.
+    """
+    job = context.job
+    job_data = job.data
+    media_group_id = job_data['media_group_id']
+
+    # User ID is now attached to the job itself because we passed it in run_once
+    user_id = job.user_id
+
+    # Safety check
+    if not context.user_data:
+        logger.error(f"context.user_data is None for job {job.name}. Ensure user_id was passed to run_once.")
+        return
+
+    # Retrieve messages from buffer
+    buffer = context.user_data.get('media_group_buffer', {})
+    messages = buffer.pop(media_group_id, [])
+
+    # Save the cleaned buffer back to user_data
+    if not buffer:
+        context.user_data.pop('media_group_buffer', None)
+
+    if not messages:
+        logger.warning(f"No messages found for media group {media_group_id}")
+        return
+
+    # Sort messages by message_id to ensure correct order
+    messages.sort(key=lambda m: m.message_id)
+
+    task_id = get_or_create_task_id(user_id, context)
+
+    # Extract data
+    media_list = []
+    caption = ""
+
+    for msg in messages:
+        # Capture caption from the first message that has one
+        if msg.caption and not caption:
+            caption = msg.caption
+
+        file_id = None
+        file_type = None
+
+        if msg.photo:
+            file_id = msg.photo[-1].file_id  # Best quality
+            file_type = 'photo'
+        elif msg.video:
+            file_id = msg.video.file_id
+            file_type = 'video'
+        elif msg.document:
+            file_id = msg.document.file_id
+            file_type = 'document'
+        elif msg.audio:
+            file_id = msg.audio.file_id
+            file_type = 'audio'
+
+        if file_id:
+            media_list.append({
+                'type': file_type,
+                'media': file_id,
+                'has_spoiler': msg.has_media_spoiler if hasattr(msg, 'has_media_spoiler') else False
+            })
+
+    # Prepare JSON data
+    media_group_data = {
+        'caption': caption,
+        'files': media_list
+    }
+
+    # -----------------------------
+    #      NEW SNIPPET LOGIC
+    # -----------------------------
+    if caption:
+        words = caption.split()
+        short_caption = " ".join(words[:4])
+        if len(words) > 4:
+            short_caption += "..."
+        snippet = f"📸 {short_caption}"
+    else:
+        snippet = "📸"
+    # -----------------------------
+
+    # Set Task Name if empty
+    task = get_task_details(task_id)
+    if not task.get('task_name'):
+        new_name = snippet[:200]
+        await update_task_field(task_id, 'task_name', new_name, context)
+
+    # Save to DB
+    first_msg_id = messages[0].message_id
+    chat_id = messages[0].chat_id
+
+    json_data = json.dumps(media_group_data)
+
+    await update_task_field(task_id, 'content_message_id', first_msg_id, context)
+    await update_task_field(task_id, 'content_chat_id', chat_id, context)
+
+    db_query(
+        "UPDATE tasks SET message_snippet = %s, media_group_data = %s WHERE id = %s",
+        (snippet, json_data, task_id),
+        commit=True
+    )
+
+    # Trigger UI update
+    await send_task_preview(user_id, task_id, context, is_group=True, media_data=media_group_data)
+
+
+
+async def send_task_preview(user_id, task_id, context, is_group=False, media_data=None):
+    """Helper to send the saved confirmation and preview"""
+
     success_text = get_text('task_message_saved', context)
     await context.bot.send_message(chat_id=user_id, text=f"✅ {success_text}")
 
     # Send PREVIEW
-    post_type = task.get('post_type', 'from_bot')
-    preview_msg = None
-    try:
-        if post_type == 'repost':
-            preview_msg = await context.bot.forward_message(
-                chat_id=user_id,
-                from_chat_id=content_chat_id,
-                message_id=content_message_id
-            )
-        else:
+    if is_group and media_data:
+        try:
+            input_media = []
+            caption_to_use = media_data.get('caption', '')
+
+            for i, f in enumerate(media_data['files']):
+                media = None
+
+                # Determine InputMedia class based on file type
+                media_class = None
+                if f['type'] == 'photo':
+                    media_class = InputMediaPhoto
+                elif f['type'] == 'video':
+                    media_class = InputMediaVideo
+                elif f['type'] == 'document':
+                    media_class = InputMediaDocument  # <--- Use InputMediaDocument
+                elif f['type'] == 'audio':
+                    media_class = InputMediaAudio  # <--- Use InputMediaAudio
+
+                if media_class:
+                    kwargs = {'media': f['media']}
+
+                    # Only the first item gets the caption
+                    if i == 0:
+                        kwargs['caption'] = caption_to_use
+
+                    # Photos and Videos support has_spoiler
+                    if media_class in (InputMediaPhoto, InputMediaVideo):
+                        kwargs['has_spoiler'] = f.get('has_spoiler', False)
+
+                    media = media_class(**kwargs)
+                    input_media.append(media)
+
+            # --- FIX: Handle non-standard media groups ---
+            # If the group contains mixed types (e.g., photo/video mixed with document/audio)
+            # send_media_group will fail. We must split it or handle it carefully.
+            # Telegram Bot API generally only allows photo/video groups.
+            # For simplicity in preview, we use the first message ID as a fallback if the group fails.
+
+            if input_media:
+                try:
+                    msgs = await context.bot.send_media_group(chat_id=user_id, media=input_media)
+                    # Save ID of first message for deletion logic later
+                    context.user_data['temp_task_message_id'] = msgs[0].message_id
+                except TelegramError as te:
+                    # If send_media_group fails (often due to mixed types), fall back to copying the first message
+                    logger.warning(f"send_media_group failed (likely mixed types): {te}. Falling back to copy_message.")
+
+                    # Fallback: Copy the original first message in the group
+                    if media_data['files']:
+                        first_file_id = media_data['files'][0]['media']
+
+                        # Note: We need the original message_id, which we saved in task_message_id
+                        task = get_task_details(task_id)
+
+                        fallback_msg = await context.bot.copy_message(
+                            chat_id=user_id,
+                            from_chat_id=task['content_chat_id'],
+                            message_id=task['content_message_id']
+                        )
+                        context.user_data['temp_task_message_id'] = fallback_msg.message_id
+                    else:
+                        raise te  # Re-raise if no files found
+
+            else:
+                await context.bot.send_message(chat_id=user_id,
+                                               text="⚠️ Error: Could not compile media group for preview.")
+
+        except Exception as e:
+            logger.error(f"Group preview failed: {e}")
+            await context.bot.send_message(chat_id=user_id, text="⚠️ Critical error generating group preview.")
+    else:
+        # Standard Single Message Preview (Existing logic)
+        task = get_task_details(task_id)
+        try:
             preview_msg = await context.bot.copy_message(
                 chat_id=user_id,
-                from_chat_id=content_chat_id,
-                message_id=content_message_id
+                from_chat_id=task['content_chat_id'],
+                message_id=task['content_message_id']
             )
-
-        if preview_msg:
             context.user_data['temp_task_message_id'] = preview_msg.message_id
-
-    except Exception as e:
-        logger.error(f"Preview generation failed: {e}")
-        await context.bot.send_message(chat_id=user_id, text="⚠️ Error generating preview.")
+        except Exception as e:
+            logger.error(f"Preview failed: {e}")
 
     # Footer
     footer_text = get_text('task_message_preview_footer', context)
@@ -4644,8 +5017,6 @@ async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYP
         text=footer_text,
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-
-    return TASK_SET_MESSAGE
 
 
 # --- Выбор Каналов ---
@@ -6330,7 +6701,7 @@ async def execute_unpin_job(context: ContextTypes.DEFAULT_TYPE):
 async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
     """
     EXECUTOR (called by JobQueue)
-    Publishes the post using ID from publication_jobs
+    Publishes the post (Single or Media Group).
     """
     bot = context.bot
     job_id = context.job.data.get('job_id')
@@ -6344,12 +6715,17 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
 
     logger.info(f"Starting execute_publication_job for job_id: {job_id}")
 
+    # Fetch Job info
     job_data = db_query("SELECT * FROM publication_jobs WHERE id = %s AND status = 'scheduled'", (job_id,),
                         fetchone=True)
 
     if not job_data:
         logger.error(f"Job {job_id} not found in DB or already executed.")
         return
+
+    # Fetch Task info (specifically for media group data)
+    task_data = db_query("SELECT media_group_data FROM tasks WHERE id = %s", (job_data['task_id'],), fetchone=True)
+    media_group_json = task_data.get('media_group_data')
 
     user_id = job_data['user_id']
     channel_id = job_data['channel_id']
@@ -6358,52 +6734,85 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
     auto_delete_hours = job_data['auto_delete_hours']
     pin_duration = job_data['pin_duration']
 
-    try:
-        # Send message
-        sent_message = await bot.copy_message(
-            chat_id=channel_id,
-            from_chat_id=content_chat_id,
-            message_id=content_message_id,
-            disable_notification=not job_data['pin_notify']
-        )
-        posted_message_id = sent_message.message_id
-        logger.info(f"Job {job_id} published in {channel_id}, msg_id: {posted_message_id}")
+    posted_message_id = None
 
-        # --- NOTIFY USER (LOCALIZED & TASK NAME) ---
+    try:
+        # --- SENDING LOGIC ---
+        if media_group_json:
+            # === OPTION A: SEND MEDIA GROUP ===
+            media_data = media_group_json  # Psycopg2 usually decodes JSONB automatically. If string, use json.loads()
+            if isinstance(media_data, str):
+                media_data = json.loads(media_data)
+
+            input_media = []
+            caption_to_use = media_data.get('caption')
+
+            for i, f in enumerate(media_data['files']):
+                media_obj = None
+
+                # Check file type and create the correct InputMedia object
+                if f['type'] == 'photo':
+                    media_obj = InputMediaPhoto(
+                        media=f['media'],
+                        caption=caption_to_use if i == 0 else None,  # <-- FIX: Set caption only on i=0
+                        has_spoiler=f.get('has_spoiler', False)
+                    )
+                elif f['type'] == 'video':
+                    media_obj = InputMediaVideo(
+                        media=f['media'],
+                        caption=caption_to_use if i == 0 else None,  # <-- FIX: Set caption only on i=0
+                        has_spoiler=f.get('has_spoiler', False)
+                    )
+                # (Add Audio/Document handling if needed)
+
+                if media_obj:
+                    # We rely on the caption being set inside the InputMedia object constructor above
+                    input_media.append(media_obj)
+
+            if input_media:
+                sent_messages = await bot.send_media_group(
+                    chat_id=channel_id,
+                    media=input_media,
+                    disable_notification=not job_data['pin_notify']
+                )
+                # For pinning/deleting, usually we reference the first message ID
+                posted_message_id = sent_messages[0].message_id
+                logger.info(f"Media Group published in {channel_id}, first msg_id: {posted_message_id}")
+            else:
+                raise Exception("Media group data found but input list empty")
+
+        else:
+            # === OPTION B: SEND SINGLE MESSAGE (Copy) ===
+            sent_message = await bot.copy_message(
+                chat_id=channel_id,
+                from_chat_id=content_chat_id,
+                message_id=content_message_id,
+                disable_notification=not job_data['pin_notify']
+            )
+            posted_message_id = sent_message.message_id
+            logger.info(f"Single Job published in {channel_id}, msg_id: {posted_message_id}")
+
+        # --- NOTIFY USER (Existing Logic) ---
         try:
-            # 1. Получаем название канала
             channel_info = db_query("SELECT channel_title FROM channels WHERE channel_id = %s", (channel_id,),
                                     fetchone=True)
             channel_title = channel_info['channel_title'] if channel_info else str(channel_id)
-
-            # 2. Получаем название задачи
             task_info = db_query("SELECT task_name FROM tasks WHERE id = %s", (job_data['task_id'],), fetchone=True)
-            # Если имя не задано, используем дефолтное
             task_name = task_info['task_name'] if task_info and task_info['task_name'] else f"#{job_data['task_id']}"
-
-            # 3. Определяем язык пользователя
             user_settings = get_user_settings(user_id)
             lang = user_settings.get('language_code', 'en')
 
-            # 4. Формируем локализованный текст
             title_txt = get_text('notify_post_published_title', context, lang=lang)
             channel_lbl = get_text('notify_post_published_channel', context, lang=lang)
             task_lbl = get_text('notify_post_published_task', context, lang=lang)
 
-            notify_text = (
-                f"{title_txt}\n"
-                f"{channel_lbl} {channel_title}\n"
-                f"{task_lbl} {task_name}"
-            )
-
-            # Send silently to not disturb too much
+            notify_text = f"{title_txt}\n{channel_lbl} {channel_title}\n{task_lbl} {task_name}"
             await bot.send_message(chat_id=user_id, text=notify_text, disable_notification=True)
         except Exception as e:
             logger.warning(f"Failed to notify user {user_id}: {e}")
-        # -------------------------
 
         # --- PINNING LOGIC ---
-        if pin_duration > 0:
+        if pin_duration > 0 and posted_message_id:
             try:
                 await bot.pin_chat_message(
                     chat_id=channel_id,
@@ -6411,7 +6820,6 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                     disable_notification=not job_data['pin_notify']
                 )
 
-                # SCHEDULE UNPIN
                 if auto_delete_hours == 0 or pin_duration < auto_delete_hours:
                     unpin_time_utc = datetime.now(ZoneInfo('UTC')) + timedelta(hours=pin_duration)
                     unpin_job_name = f"unpin_{job_id}_msg_{posted_message_id}"
@@ -6419,37 +6827,22 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                     context.application.job_queue.run_once(
                         execute_unpin_job,
                         when=unpin_time_utc,
-                        data={
-                            'channel_id': channel_id,
-                            'message_id': posted_message_id,
-                            'job_id': job_id
-                        },
+                        data={'channel_id': channel_id, 'message_id': posted_message_id, 'job_id': job_id},
                         name=unpin_job_name,
                         job_kwargs={'misfire_grace_time': 600}
                     )
             except TelegramError as e:
                 logger.error(f"Error pinning job {job_id}: {e}")
 
-        # --- REPORT LOGIC ---
-        task_info_report = db_query("SELECT report_enabled FROM tasks WHERE id = %s", (job_data['task_id'],),
-                                    fetchone=True)
-        if task_info_report and task_info_report['report_enabled']:
-            # ... (Report logic similar to existing code - omitted for brevity) ...
-            pass
-
         # --- AUTO DELETE LOGIC ---
-        if auto_delete_hours > 0:
+        if auto_delete_hours > 0 and posted_message_id:
             delete_time_utc = datetime.now(ZoneInfo('UTC')) + timedelta(hours=auto_delete_hours)
             delete_job_name = f"del_{job_id}_msg_{posted_message_id}"
 
             context.application.job_queue.run_once(
                 execute_delete_job,
                 when=delete_time_utc,
-                data={
-                    'channel_id': channel_id,
-                    'message_id': posted_message_id,
-                    'job_id': job_id
-                },
+                data={'channel_id': channel_id, 'message_id': posted_message_id, 'job_id': job_id},
                 name=delete_job_name,
                 job_kwargs={'misfire_grace_time': 600}
             )
