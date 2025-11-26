@@ -183,7 +183,7 @@ TEXTS = {
         'duration_48h': "48ч",
         'duration_3d': "3д",
         'duration_7d': "7д",
-        'duration_no': "❌ Нет",
+        'duration_no': "❌",
         'duration_ask_pin': "📌 Выберите длительность закрепления:",
         'duration_ask_delete': "🧹 Выберите длительность автоудаления:",
 
@@ -193,7 +193,7 @@ TEXTS = {
         'status_from_bot': "От бота",
         'status_repost': "Репост",
         'error_generic': "❌ Произошла ошибка. Попробуйте снова.",
-        'task_message_saved': "✅ Сообщение для публикации сохранено!",
+        'task_message_saved': "Сообщение для публикации сохранено!",
         'task_name_saved': "✅ Название задачи сохранено!",
 
         'calendar_prev': "⬅️ Пред. месяц",
@@ -451,7 +451,11 @@ TEXTS = {
         'error_msg_caption_truncated': "Ваша подпись была обрезана Telegram, так как превышала допустимый лимит.",
 
         'error_msg_text_split': "Ваш текст превышает лимит Telegram и был автоматически разделён на части. Пожалуйста, сократите сообщение.",
-        'error_msg_caption_split': "Ваша подпись превышает лимит Telegram и была автоматически разделена. Пожалуйста, сократите текст."
+        'error_msg_caption_split': "Ваша подпись превышает лимит Telegram и была автоматически разделена. Пожалуйста, сократите текст.",
+
+        'task_message_preview_footer': 'Сообщение будет опубликовано как показано выше ⬆️',
+        'dont_have_channels': 'У вас нет добавленных каналов. Сначала добавьте бота администратором в канал.',
+        'choose_channel': '📢 Выберите каналы для публикации:\n(Нажмите на канал чтобы выбрать/отменить)'
     },
     'en': {
         'welcome_lang': """🤖 Welcome to XSponsorBot!
@@ -776,7 +780,11 @@ Let's get started! Please select your language:""",
         'error_msg_caption_truncated': "Your caption was truncated by Telegram because it exceeded the allowed limit.",
 
         'error_msg_text_split': "Your text exceeds Telegram’s limit and was automatically split into multiple parts. Please reduce its length.",
-        'error_msg_caption_split': "Your caption exceeds Telegram’s limit and was automatically split. Please reduce the text."
+        'error_msg_caption_split': "Your caption exceeds Telegram’s limit and was automatically split. Please reduce the text.",
+
+        'task_message_preview_footer': 'The message will be published as shown above ⬆️',
+        'dont_have_channels': "You don't have any channels added. First, add the bot as an administrator to the channel.",
+        'choose_channel': '📢 Select the channels to publish:\n(Click on the channel to select/cancel)'
     },
     'es': {
         # ... (existing Spanish localizations) ...
@@ -2480,6 +2488,13 @@ def init_db():
                 )
             """)
 
+            # --- MIGRATION: Ensure message_snippet column exists ---
+            try:
+                cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS message_snippet VARCHAR(255)")
+            except psycopg2.Error:
+                conn.rollback()
+            # -----------------------------------------------------
+
             # Таблица связей "Задача <-> Каналы"
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS task_channels (
@@ -2540,12 +2555,8 @@ def init_db():
             """)
 
             cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON publication_jobs(status)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_scheduled_time ON publication_jobs(scheduled_time_utc)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON scheduled_tasks(status)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_tasks_task_id ON tasks(user_id)")
-
             conn.commit()
-            logger.info("База данных успешно инициализирована (Новая Схема)")
+            logger.info("База данных успешно инициализирована")
     except (Exception, psycopg2.Error) as e:
         logger.error(f"Ошибка при инициализации БД: {e}")
         conn.rollback()
@@ -2893,6 +2904,8 @@ def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
     report_val = False
     post_type = 'from_bot'
     is_active = False
+    has_message = False
+    has_channels = False
 
     if task:
         pin_val = task.get('pin_duration', 0)
@@ -2901,31 +2914,38 @@ def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
         report_val = task.get('report_enabled', False)
         post_type = task.get('post_type', 'from_bot')
         is_active = task.get('status') == 'active'
+        has_message = bool(task.get('content_message_id'))
+
+        # Check channels cheaply if needed, or rely on variable
+        channels = get_task_channels(task_id)
+        has_channels = bool(channels)
 
     # --- Localization Helper ---
     lang = context.user_data.get('language_code', 'en')
 
-    # Map for short 'day' suffix (since 'status_days_suffix' in TEXTS is often full words like "days"/"jours")
-    short_days_map = {
-        'ru': 'д', 'en': 'd', 'es': 'd', 'fr': 'j', 'ua': 'д', 'de': 'T'
-    }
-    # Map for short 'hour' suffix (derived from TEXTS logic)
-    short_hours_map = {
-        'ru': 'ч', 'en': 'h', 'es': 'h', 'fr': 'h', 'ua': 'г', 'de': 'h'
-    }
-
+    short_days_map = {'ru': 'д', 'en': 'd', 'es': 'd', 'fr': 'j', 'ua': 'д', 'de': 'T'}
+    short_hours_map = {'ru': 'ч', 'en': 'h', 'es': 'h', 'fr': 'h', 'ua': 'г', 'de': 'h'}
     s_d = short_days_map.get(lang, 'd')
     s_h = short_hours_map.get(lang, 'h')
 
     def format_duration(hours):
         if hours <= 0:
-            # Returns localized "❌ No" / "❌ Нет" / "❌ Non"
             return get_text('duration_no', context)
         if hours % 24 == 0:
-            return f"{hours // 24}{s_d}"  # e.g. "3j" or "3T"
-        return f"{hours}{s_h}"  # e.g. "12h" or "12г"
+            return f"{hours // 24}{s_d}"
+        return f"{hours}{s_h}"
 
     # --- Dynamic Button Labels ---
+
+    # Message Button with ✅/❌
+    lbl_msg = get_text('task_set_message_btn', context)
+    val_msg = "✅" if has_message else "❌"
+    btn_msg = f"{lbl_msg} {val_msg}"
+
+    # Channels Button with ✅/❌ (Optional, consistent style)
+    lbl_ch = get_text('task_select_channels_btn', context)
+    val_ch = "✅" if has_channels else "❌"
+    btn_ch = f"{lbl_ch} {val_ch}"
 
     # 1. Pin
     lbl_pin = get_text('task_set_pin_btn', context)
@@ -2961,8 +2981,8 @@ def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
     # --- Construct Keyboard ---
     keyboard = [
         [InlineKeyboardButton(get_text('task_set_name_btn', context), callback_data="task_set_name")],
-        [InlineKeyboardButton(get_text('task_select_channels_btn', context), callback_data="task_select_channels")],
-        [InlineKeyboardButton(get_text('task_set_message_btn', context), callback_data="task_set_message")],
+        [InlineKeyboardButton(btn_ch, callback_data="task_select_channels")],
+        [InlineKeyboardButton(btn_msg, callback_data="task_set_message")],
         [
             InlineKeyboardButton(get_text('task_select_calendar_btn', context), callback_data="task_select_calendar"),
             InlineKeyboardButton(get_text('task_select_time_btn', context), callback_data="task_select_time")
@@ -3250,18 +3270,31 @@ def boss_panel_keyboard(context: ContextTypes.DEFAULT_TYPE):
 # --- Хелперы ConversationHandler ---
 
 async def send_or_edit_message(update: Update, text: str, reply_markup: InlineKeyboardMarkup):
-    """Отправляет новое или редактирует существующее сообщение."""
+    """
+    Отправляет новое или редактирует существующее сообщение.
+    Robust version: Если редактирование невозможно (сообщение удалено или другого типа), отправляет новое.
+    """
     query = update.callback_query
     if query and query.message:
         try:
-            # FIXED: Remove parse_mode to avoid Markdown errors
             await query.edit_message_text(text, reply_markup=reply_markup)
         except TelegramError as e:
-            if "Message is not modified" not in str(e):
-                logger.warning(f"Ошибка редактирования сообщения: {e}")
+            # Если "Message is not modified" - это не ошибка, игнорируем.
+            if "Message is not modified" in str(e):
+                await query.answer()
+                return
+
+            # Если сообщение не найдено (удалено) или нельзя отредактировать (например, было фото),
+            # отправляем новое сообщение.
+            logger.warning(f"Edit failed ({e}), sending new message instead.")
+            try:
+                # Используем effective_chat, так как query.message может быть уже неактуален
+                await update.effective_chat.send_message(text, reply_markup=reply_markup)
+            except Exception as send_e:
+                logger.error(f"Failed to send fallback message: {send_e}")
+
             await query.answer()
     elif update.message:
-        # FIXED: Remove parse_mode to avoid Markdown errors
         await update.message.reply_text(text, reply_markup=reply_markup)
 
 
@@ -4155,9 +4188,9 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
 
     # Suffixes
     count_suffix = get_text('status_count_suffix', context)
-    days_suffix = get_text('status_days_suffix', context) # e.g., "d" or "days"
-    hours_suffix = get_text('status_hours_suffix', context) # e.g., "h"
-    hours_suffix_short = get_text('status_hours_suffix_short', context) # e.g., "h"
+    days_suffix = get_text('status_days_suffix', context)
+    hours_suffix = get_text('status_hours_suffix', context)
+    hours_suffix_short = get_text('status_hours_suffix_short', context)
 
     # --- DETERMINE STATUS (Traffic Light Logic) ---
     status_label = get_text('task_status_label', context)
@@ -4216,26 +4249,23 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
             advertiser_text = get_text('status_advertiser_id', context).format(
                 advertiser_user_id=task['advertiser_user_id'])
 
-    # --- MODIFIED: Pin Duration Formatting ---
+    # Pin Duration
     pin_text = get_text('status_no', context)
     if task['pin_duration'] > 0:
         if task['pin_duration'] % 24 == 0:
-            # Display in days
             val = task['pin_duration'] // 24
             pin_text = get_text('status_pin_duration', context).format(duration=val, suffix=days_suffix)
         else:
-            # Display in hours
-            pin_text = get_text('status_pin_duration', context).format(duration=task['pin_duration'], suffix=hours_suffix)
+            pin_text = get_text('status_pin_duration', context).format(duration=task['pin_duration'],
+                                                                       suffix=hours_suffix)
 
-    # --- MODIFIED: Auto Delete Formatting ---
+    # Auto Delete
     delete_text = get_text('status_no', context)
     if task['auto_delete_hours'] > 0:
         if task['auto_delete_hours'] % 24 == 0:
-            # Display in days
             val = task['auto_delete_hours'] // 24
             delete_text = get_text('status_delete_duration', context).format(duration=val, suffix=days_suffix)
         else:
-            # Display in hours
             delete_text = get_text('status_delete_duration', context).format(duration=task['auto_delete_hours'],
                                                                              suffix=hours_suffix_short)
 
@@ -4250,8 +4280,16 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
     channels_status = get_text('status_dates_count', context).format(count=channels_count,
                                                                      suffix=count_suffix) if channels_count > 0 else get_text(
         'status_not_selected', context)
-    message_status = get_text('status_set', context) if task['content_message_id'] else get_text('status_not_set',
-                                                                                                 context)
+
+    # --- MESSAGE STATUS: Show snippet if available ---
+    if task['content_message_id']:
+        if task.get('message_snippet'):
+            message_status = f"✅ {task['message_snippet']}"
+        else:
+            message_status = get_text('status_set', context)
+    else:
+        message_status = get_text('status_not_set', context)
+    # -------------------------------------------------
 
     title = get_text('task_constructor_title', context)
     if task_id:
@@ -4279,28 +4317,44 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
     return text
 
 
-async def show_task_constructor(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает главный экран конструктора задач."""
-    # Удаляем временное скопированное сообщение из чата (если оно есть)
-    temp_msg_id = context.user_data.get('temp_task_message_id')
-    if temp_msg_id:
-        try:
-            # Определяем chat_id в зависимости от типа update
-            if update.callback_query:
-                chat_id = update.callback_query.message.chat_id
-            elif update.message:
-                chat_id = update.message.chat_id
-            else:
-                chat_id = None
+async def show_task_constructor(update: Update, context: ContextTypes.DEFAULT_TYPE, force_new_message: bool = False):
+    """
+    Показывает главный экран конструктора задач.
+    Added force_new_message: для принудительной отправки нового сообщения (например, после удаления превью).
+    """
+    chat_id = None
+    if update.callback_query:
+        chat_id = update.callback_query.message.chat_id
+    elif update.message:
+        chat_id = update.message.chat_id
 
-            if chat_id:
+    if chat_id:
+        # Cleanup PREVIEW message
+        temp_msg_id = context.user_data.get('temp_task_message_id')
+        if temp_msg_id:
+            try:
                 await context.bot.delete_message(chat_id=chat_id, message_id=temp_msg_id)
-        except Exception as e:
-            logger.warning(f"Не удалось удалить временное сообщение {temp_msg_id}: {e}")
-        context.user_data.pop('temp_task_message_id', None)
+            except Exception:
+                pass
+            context.user_data.pop('temp_task_message_id', None)
+
+        # Cleanup PROMPT message
+        temp_prompt_id = context.user_data.get('temp_prompt_message_id')
+        if temp_prompt_id:
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=temp_prompt_id)
+            except Exception:
+                pass
+            context.user_data.pop('temp_prompt_message_id', None)
 
     text = get_task_constructor_text(context)
-    await send_or_edit_message(update, text, task_constructor_keyboard(context))
+
+    # Если запрошено новое сообщение или у нас нет query для редактирования
+    if force_new_message and chat_id:
+        await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=task_constructor_keyboard(context))
+    else:
+        await send_or_edit_message(update, text, task_constructor_keyboard(context))
+
     return TASK_CONSTRUCTOR
 
 
@@ -4354,16 +4408,9 @@ async def task_back_to_constructor(update: Update, context: ContextTypes.DEFAULT
     query = update.callback_query
     await query.answer()
 
-    # Удаляем временное скопированное сообщение из чата (если оно есть)
-    temp_msg_id = context.user_data.get('temp_task_message_id')
-    if temp_msg_id:
-        try:
-            await context.bot.delete_message(chat_id=query.message.chat_id, message_id=temp_msg_id)
-        except Exception as e:
-            logger.warning(f"Не удалось удалить временное сообщение {temp_msg_id}: {e}")
-        context.user_data.pop('temp_task_message_id', None)
-
-    return await show_task_constructor(update, context)
+    # Мы возвращаемся с экрана (превью), который удаляется внутри show_task_constructor (cleanup).
+    # Поэтому мы должны принудительно отправить новое сообщение, так как старое (кнопка Назад) исчезнет.
+    return await show_task_constructor(update, context, force_new_message=True)
 
 
 # --- Установка Названия ---
@@ -4408,49 +4455,61 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     task_id = context.user_data.get('current_task_id')
     task = get_task_details(task_id)
 
-    # Чтобы удалить предыдущее временное сообщение после выхода
+    # Cleanup previous temp message if any
     previous_msg_id = context.user_data.get('temp_task_message_id')
-
     if previous_msg_id:
         try:
             await context.bot.delete_message(chat_id=query.message.chat_id, message_id=previous_msg_id)
-        except Exception as e:
-            logger.warning(f"Не удалось удалить временное сообщение {previous_msg_id}: {e}")
+        except Exception:
+            pass
         context.user_data.pop('temp_task_message_id', None)
 
+    # Cleanup previous prompt message if any
+    previous_prompt_id = context.user_data.get('temp_prompt_message_id')
+    if previous_prompt_id:
+        try:
+            await context.bot.delete_message(chat_id=query.message.chat_id, message_id=previous_prompt_id)
+        except Exception:
+            pass
+        context.user_data.pop('temp_prompt_message_id', None)
+
     if task and task['content_message_id']:
-        # Сообщение уже установлено
+        # --- EDIT MODE ---
         text = get_text('task_message_current_prompt', context)
 
+        # 1. Edit the prompt message (remove buttons from here)
+        await query.edit_message_text(text, reply_markup=None)
+
+        # Save ID of the prompt message to delete it later on "Back"
+        context.user_data['temp_prompt_message_id'] = query.message.message_id
+
+        # 2. Define Keyboard for the PREVIEW (Delete & Back)
         keyboard = [
             [InlineKeyboardButton(get_text('task_delete_message_btn', context), callback_data="task_delete_message")],
             [
                 InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor"),
-                InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu")
             ]
         ]
 
-        # Отредактировать текст кнопок
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-
         try:
-            # Копируем сообщение, чтобы юзер его увидел
+            # 3. Copy message (Preview) WITH buttons attached
             copied_message = await context.bot.copy_message(
                 chat_id=query.message.chat_id,
                 from_chat_id=task['content_chat_id'],
-                message_id=task['content_message_id']
+                message_id=task['content_message_id'],
+                reply_markup=InlineKeyboardMarkup(keyboard)
             )
-            # Сохраняем ID временного сообщения, чтобы удалить его при выходе
+            # Save ID of preview message
             context.user_data['temp_task_message_id'] = copied_message.message_id
 
         except Exception as e:
             logger.warning(f"Не удалось скопировать старое сообщение для task {task_id}: {e}")
             await query.message.reply_text(get_text('task_message_display_error', context))
 
-        return TASK_SET_MESSAGE  # Остаемся в том же состоянии
+        return TASK_SET_MESSAGE
 
     else:
-        # Сообщение не установлено
+        # --- ASK MODE ---
         text = get_text('task_ask_message', context)
         await query.edit_message_text(
             text,
@@ -4467,27 +4526,24 @@ async def task_delete_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     task_id = context.user_data.get('current_task_id')
     if not task_id:
         await query.edit_message_text(get_text('error_generic', context))
-        return await show_task_constructor(update, context)  # Failsafe
+        return await show_task_constructor(update, context)
 
-    # Удаляем временное скопированное сообщение из чата (если оно есть)
-    temp_msg_id = context.user_data.get('temp_task_message_id')
-    if temp_msg_id:
-        try:
-            await context.bot.delete_message(chat_id=query.message.chat_id, message_id=temp_msg_id)
-        except Exception as e:
-            logger.warning(f"Не удалось удалить временное сообщение {temp_msg_id}: {e}")
-        context.user_data.pop('temp_task_message_id', None)
-
+    # Обнуляем данные в БД
     await update_task_field(task_id, 'content_message_id', None, context)
     await update_task_field(task_id, 'content_chat_id', None, context)
+    db_query("UPDATE tasks SET message_snippet = NULL WHERE id = %s", (task_id,), commit=True)
 
     await query.answer(get_text('task_message_deleted_alert', context), show_alert=True)
 
-    # Возвращаемся в конструктор
-    return await show_task_constructor(update, context)
+    # Возвращаемся в конструктор.
+    # Так как show_task_constructor выполнит cleanup и удалит превью, нужно отправить новое сообщение.
+    return await show_task_constructor(update, context, force_new_message=True)
 
 
 async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handles receiving a message for the task.
+    """
     user_id = update.message.from_user.id
     task_id = get_or_create_task_id(user_id, context)
 
@@ -4495,32 +4551,101 @@ async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(get_text('error_generic', context))
         return TASK_CONSTRUCTOR
 
-    # ---- Проверка длины сообщения ----
-    text = update.message.text or ""
-    caption = update.message.caption or ""
+    message = update.message
+    content_text = message.text or message.caption or ""
 
-    # Telegram реально не отдаёт больше 4096/1024, но проверяем на случай сторонних изменений
-    if len(text) > 4096:
-        await update.message.reply_text(
-            get_text('error_msg_too_long_text_real', context).format(count=len(text))
-        )
-        return TASK_SET_MESSAGE
+    if not content_text:
+        # Placeholder logic
+        if message.photo:
+            content_text = "🖼 [Photo]"
+        elif message.video:
+            content_text = "📹 [Video]"
+        elif message.document:
+            content_text = "📄 [File]"
+        elif message.audio:
+            content_text = "🎵 [Audio]"
+        elif message.voice:
+            content_text = "🎤 [Voice]"
+        elif message.sticker:
+            content_text = "👾 [Sticker]"
+        else:
+            content_text = "📦 [Media]"
 
-    if len(caption) > 1024:
-        await update.message.reply_text(
-            get_text('error_msg_too_long_caption_real', context).format(count=len(caption))
-        )
-        return TASK_SET_MESSAGE
+    # Generate snippet (existing logic)
+    words = content_text.split()
+    snippet = " ".join(words[:4])
+    if len(words) > 4:
+        snippet += "..."
 
-    # ---- Сохраняем сообщения ----
-    content_message_id = update.message.message_id
-    content_chat_id = update.message.chat_id
+    # --- NEW: Set Task Name if not given yet (First 4 words) ---
+    task = get_task_details(task_id)
+    if not task.get('task_name'):
+        # Extract first 4 words
+        name_words = content_text.split()
+        if not name_words:
+            # Fallback if content_text was empty but media exists (use the placeholder from snippet)
+            new_name = snippet
+        else:
+            new_name = " ".join(name_words[:4])
+
+        # Safety truncate
+        if len(new_name) > 200:
+            new_name = new_name[:200]
+
+        if new_name:
+            await update_task_field(task_id, 'task_name', new_name, context)
+    # -----------------------------------------------------------
+
+    # Save to DB
+    content_message_id = message.message_id
+    content_chat_id = message.chat_id
 
     await update_task_field(task_id, 'content_message_id', content_message_id, context)
     await update_task_field(task_id, 'content_chat_id', content_chat_id, context)
+    db_query("UPDATE tasks SET message_snippet = %s WHERE id = %s", (snippet, task_id), commit=True)
 
-    await update.message.reply_text(get_text('task_message_saved', context))
-    return await show_task_constructor(update, context)
+    # Success & Preview Logic
+    success_text = get_text('task_message_saved', context)
+    await context.bot.send_message(chat_id=user_id, text=f"✅ {success_text}")
+
+    # Send PREVIEW
+    post_type = task.get('post_type', 'from_bot')
+    preview_msg = None
+    try:
+        if post_type == 'repost':
+            preview_msg = await context.bot.forward_message(
+                chat_id=user_id,
+                from_chat_id=content_chat_id,
+                message_id=content_message_id
+            )
+        else:
+            preview_msg = await context.bot.copy_message(
+                chat_id=user_id,
+                from_chat_id=content_chat_id,
+                message_id=content_message_id
+            )
+
+        if preview_msg:
+            context.user_data['temp_task_message_id'] = preview_msg.message_id
+
+    except Exception as e:
+        logger.error(f"Preview generation failed: {e}")
+        await context.bot.send_message(chat_id=user_id, text="⚠️ Error generating preview.")
+
+    # Footer
+    footer_text = get_text('task_message_preview_footer', context)
+    keyboard = [
+        [InlineKeyboardButton(get_text('task_delete_message_btn', context), callback_data="task_delete_message")],
+        [InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor")]
+    ]
+
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=footer_text,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+    return TASK_SET_MESSAGE
 
 
 # --- Выбор Каналов ---
@@ -4538,12 +4663,12 @@ async def task_select_channels(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if not channels:
         await query.edit_message_text(
-            "У вас нет добавленных каналов. Сначала добавьте бота администратором в канал.",
+            get_text('dont_have_channels', context),
             reply_markup=back_to_constructor_keyboard(context)
         )
         return TASK_SELECT_CHANNELS
 
-    text = "📢 Выберите каналы для публикации:\n(Нажмите на канал чтобы выбрать/отменить)"
+    text = get_text('choose_channel', context)
     await query.edit_message_text(
         text,
         reply_markup=channels_selection_keyboard(context, selected_channels)
