@@ -462,8 +462,7 @@ TEXTS = {
         'selected_time': '✅ Выбрано:',
         'calendar_select_all_btn': '📅 Весь месяц',
         'calendar_ignore_past': 'В этом месяце не осталось никаких дат на будущее.',
-
-
+        'send_message_first': "Пожалуйста, сначала отправьте сообщение"
     },
     'en': {
         'welcome_lang': """🤖 Welcome to XSponsorBot!
@@ -799,6 +798,8 @@ Let's get started! Please select your language:""",
         'selected_time': '✅ Selected:',
         'calendar_select_all_btn': '📅 The Whole Month',
         'calendar_ignore_past': 'There are no dates left for the future this month..',
+
+        'send_message_first': "Please set a message first"
     },
     'es': {
         'welcome_lang': """🤖 ¡Bienvenido a XSponsorBot!
@@ -2419,27 +2420,36 @@ async def cancel_task_jobs(task_id: int, context: ContextTypes.DEFAULT_TYPE):
 
 def validate_task(task_id: int, context: ContextTypes.DEFAULT_TYPE) -> tuple[bool, str]:
     """
-    Validates if a task has all required fields to be Active.
-    Used during Hot-Reload to ensure we don't schedule broken tasks.
+    Validates if a task has all REQUIRED fields to be Active.
+    CRITICAL: Task must have Message, Time, AND Date/Weekday.
     """
     task = get_task_details(task_id)
     if not task:
         return False, "Task not found"
 
-    # 1. Check Message
+    # 1. Check Message (REQUIRED)
     if not task.get('content_message_id'):
         return False, get_text('task_error_no_message', context)
 
-    # 2. Check Channels
-    channels = get_task_channels(task_id)
-    if not channels:
-        return False, get_text('task_error_no_channels', context)
-
-    # 3. Check Schedule (Dates/Weekdays AND Times)
+    # 2. Check Schedule (REQUIRED: must have both Date/Weekday AND Time)
     schedules = get_task_schedules(task_id)
+
+    # Must have at least one date or weekday
+    has_date_or_weekday = any(
+        s['schedule_date'] or s['schedule_weekday'] is not None
+        for s in schedules
+    )
+
+    # Must have at least one time
     has_time = any(s['schedule_time'] for s in schedules)
-    if not schedules or not has_time:
+
+    if not schedules or not has_date_or_weekday:
         return False, get_text('task_error_no_schedule', context)
+
+    if not has_time:
+        return False, get_text('task_error_no_schedule', context)
+
+    # 3. Channels are NOT required - task can post without channels being saved yet
 
     return True, ""
 
@@ -2543,7 +2553,7 @@ async def refresh_task_jobs(task_id: int, context: ContextTypes.DEFAULT_TYPE):
 
 async def delete_pin_service_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Task 1: Immediately removes the 'Message Pinned' service message
+    Immediately removes the 'Message Pinned' service message
     if the pin was performed by the bot.
     """
     if not update.message or not update.message.pinned_message:
@@ -2844,19 +2854,48 @@ def deactivate_channel(channel_id: int):
 
 def get_or_create_task_id(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> Optional[int]:
     """
-    Получает ID текущей задачи из context.user_data или создает новую задачу,
-    если она не задана, и сохраняет ID в context.user_data.
+    Gets current task ID from context.user_data.
+    CRITICAL: Does NOT create a task in DB anymore. Task is created only during first valid edit.
+    Returns None if no task exists yet.
     """
     task_id = context.user_data.get('current_task_id')
     if task_id:
         return task_id
 
-    # Задача еще не существует, создаем ее.
-    # Предполагается, что create_task(user_id) возвращает ID созданной задачи
-    new_task_id = create_task(user_id)
-    if new_task_id:
-        context.user_data['current_task_id'] = new_task_id
-    return new_task_id
+    # Do NOT create task automatically - return None
+    return None
+
+
+def create_task_if_needed(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> Optional[int]:
+    """
+    Creates a task ONLY if:
+    1. Message is set
+    2. At least one time slot is set
+    3. At least one date/weekday is set
+
+    Returns task_id if created, or existing task_id, or None if conditions not met.
+    """
+    # Check if task already exists
+    task_id = context.user_data.get('current_task_id')
+    if task_id:
+        return task_id
+
+    # No task exists yet - check if we should create one
+    # For now, just create empty task - validation happens at activation
+    # This ensures task is created when user starts editing
+    result = db_query("""
+        INSERT INTO tasks (user_id, status, post_type) 
+        VALUES (%s, 'inactive', 'repost') 
+        RETURNING id
+    """, (user_id,), commit=True)
+
+    if result and 'id' in result:
+        task_id = result['id']
+        context.user_data['current_task_id'] = task_id
+        logger.info(f"Created new task ID: {task_id} for user {user_id}")
+        return task_id
+
+    return None
 
 
 # --- Задачи (Tasks) ---
@@ -3040,7 +3079,7 @@ def bottom_navigation_keyboard(context: ContextTypes.DEFAULT_TYPE):
 
 
 def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
-    """Клавиатура конструктора (Dynamic Labels with Localization)"""
+    """Constructor keyboard with dynamic labels"""
     task_id = context.user_data.get('current_task_id')
     task = get_task_details(task_id)
 
@@ -3049,7 +3088,7 @@ def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
     delete_val = 0
     push_val = False
     report_val = False
-    post_type = 'from_bot'
+    post_type = 'repost'  # CHANGED: default to repost
     is_active = False
     has_message = False
     has_channels = False
@@ -3059,11 +3098,10 @@ def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
         delete_val = task.get('auto_delete_hours', 0)
         push_val = task.get('pin_notify', False)
         report_val = task.get('report_enabled', False)
-        post_type = task.get('post_type', 'from_bot')
+        post_type = task.get('post_type', 'repost')  # CHANGED: default to repost
         is_active = task.get('status') == 'active'
         has_message = bool(task.get('content_message_id'))
 
-        # Check channels cheaply if needed, or rely on variable
         channels = get_task_channels(task_id)
         has_channels = bool(channels)
 
@@ -4189,15 +4227,16 @@ def escape_markdown(text: str) -> str:
 
 
 async def calendar_weekday_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Selects a weekday. Strictly enforces mutual exclusivity:
-    If a weekday is picked, ALL specific dates are removed.
-    """
+    """Selects a weekday"""
     query = update.callback_query
-    # We do NOT answer immediately here, let task_select_calendar handle it or do it at the end
 
     user_id = query.from_user.id
-    task_id = get_or_create_task_id(user_id, context)
+    task_id = create_task_if_needed(user_id, context)  # CHANGED
+
+    if not task_id:
+        await query.answer(get_text('send_message_first', context), show_alert=True)
+        return CALENDAR_VIEW
+
     try:
         weekday = int(query.data.replace("calendar_wd_", ""))
     except ValueError:
@@ -4274,7 +4313,7 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
         times_text = get_text('status_not_selected', context)
         pin_text = get_text('status_no', context)
         delete_text = get_text('status_no', context)
-        post_type_status = get_text('status_repost', context)
+        post_type_status = get_text('status_repost', context)  # CHANGED: default to repost
         pin_notify_status = get_text('status_no', context)
         report_status = get_text('status_no', context)
         advertiser_text = get_text('status_not_set', context)
@@ -4546,15 +4585,13 @@ async def task_ask_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def task_receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Updates name and triggers hot-reload if active"""
     user_id = update.message.from_user.id
-    task_id = get_or_create_task_id(user_id, context)
+    task_id = create_task_if_needed(user_id, context)  # CHANGED: create if needed
 
     if not task_id:
         await update.message.reply_text(get_text('error_generic', context))
         return TASK_CONSTRUCTOR
 
     task_name = update.message.text.strip()
-
-    # This triggers the Hot Reload via update_task_field -> refresh_task_jobs
     await update_task_field(task_id, 'task_name', task_name, context)
 
     await update.message.reply_text(get_text('task_name_saved', context))
@@ -4752,9 +4789,9 @@ async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def save_single_task_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Helper to save a standard single message (Refactored from original)"""
+    """Helper to save a standard single message"""
     user_id = update.message.from_user.id
-    task_id = get_or_create_task_id(user_id, context)
+    task_id = create_task_if_needed(user_id, context)  # CHANGED: create if needed
 
     if not task_id:
         await update.message.reply_text(get_text('error_generic', context))
@@ -4821,25 +4858,19 @@ async def save_single_task_message(update: Update, context: ContextTypes.DEFAULT
 async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
     """
     Job that runs after a short delay to process a buffered media group.
-    Includes logic to auto-detect if the album is a Forward or Direct Upload.
     """
     job = context.job
     job_data = job.data
     media_group_id = job_data['media_group_id']
-
-    # User ID is now attached to the job itself because we passed it in run_once
     user_id = job.user_id
 
-    # Safety check
     if not context.user_data:
-        logger.error(f"context.user_data is None for job {job.name}. Ensure user_id was passed to run_once.")
+        logger.error(f"context.user_data is None for job {job.name}")
         return
 
-    # Retrieve messages from buffer
     buffer = context.user_data.get('media_group_buffer', {})
     messages = buffer.pop(media_group_id, [])
 
-    # Save the cleaned buffer back to user_data
     if not buffer:
         context.user_data.pop('media_group_buffer', None)
 
@@ -4847,10 +4878,13 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"No messages found for media group {media_group_id}")
         return
 
-    # Sort messages by message_id to ensure correct order
     messages.sort(key=lambda m: m.message_id)
 
-    task_id = get_or_create_task_id(user_id, context)
+    task_id = create_task_if_needed(user_id, context)  # CHANGED: create if needed
+
+    if not task_id:
+        logger.error(f"Could not create task for media group {media_group_id}")
+        return
 
     # Extract data
     media_list = []
@@ -5288,11 +5322,16 @@ async def calendar_ignore_past(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def calendar_day_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Selects a specific date. Strictly removes any Weekdays."""
+    """Selects a specific date"""
     query = update.callback_query
 
     user_id = query.from_user.id
-    task_id = get_or_create_task_id(user_id, context)
+    task_id = create_task_if_needed(user_id, context)  # CHANGED
+
+    if not task_id:
+        await query.answer(get_text('send_message_first', context), show_alert=True)
+        return CALENDAR_VIEW
+
     date_str = query.data.replace("calendar_day_", "")
 
     # 1. Enforce Mutual Exclusivity: Remove ANY weekdays
@@ -5531,11 +5570,16 @@ async def task_select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def time_slot_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Выбор временного слота (Задача 3: обновление списка)"""
+    """Select time slot"""
     query = update.callback_query
 
     user_id = query.from_user.id
-    task_id = get_or_create_task_id(user_id, context)
+    task_id = create_task_if_needed(user_id, context)  # CHANGED
+
+    if not task_id:
+        await query.answer(get_text('send_message_first', context), show_alert=True)
+        return TIME_SELECTION
+
     time_str = query.data.replace("time_select_", "")
 
     schedules = get_task_schedules(task_id)
