@@ -466,7 +466,9 @@ TEXTS = {
         'calendar_select_all_btn': '📅 Весь месяц',
         'calendar_ignore_past': 'В этом месяце не осталось никаких дат на будущее.',
 
-
+        'no_name': "Без названия",
+        'no_username': "нет юзернейма",
+        'what_you_wanna_do': "Что вы хотите сделать?"
     },
     'en': {
         'welcome_lang': """🤖 Welcome to XSponsorBot!
@@ -803,6 +805,10 @@ Let's get started! Please select your language:""",
         'selected_time': '✅ Selected:',
         'calendar_select_all_btn': '📅 The Whole Month',
         'calendar_ignore_past': 'There are no dates left for the future this month..',
+
+        'no_name': "No Name",
+        'no_username': "No Username",
+        'what_you_wanna_do': "What you want to do?"
     },
     'es': {
         'welcome_lang': """🤖 ¡Bienvenido a XSponsorBot!
@@ -3802,14 +3808,14 @@ async def channel_manage_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return MY_CHANNELS
 
-    title = channel['channel_title'] or "Без названия"
-    username = channel['channel_username'] or "нет юзернейма"
+    title = channel['channel_title'] or get_text('no_name', context)
+    username = channel['channel_username'] or get_text('no_username', context)
 
     text = get_text('channel_actions_title', context) + "\n\n"
     text += f"📢 **{title}**\n"
     text += f"🔗 @{username}\n"
     text += f"ID: `{channel_id}`\n\n"
-    text += "Что вы хотите сделать?"
+    text += get_text('what_you_wanna_do', context)
 
     keyboard = [
         [InlineKeyboardButton(get_text('channel_remove_btn', context), callback_data=f"channel_delete_{channel_id}")],
@@ -7075,18 +7081,16 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                 )
 
                 # Note: The 'Message Pinned' service message is deleted by 'delete_pin_service_message' handler
+                unpin_time_utc = datetime.now(ZoneInfo('UTC')) + timedelta(hours=pin_duration)
+                unpin_job_name = f"unpin_{job_id}_msg_{posted_message_id}"
 
-                if auto_delete_hours == 0 or pin_duration < auto_delete_hours:
-                    unpin_time_utc = datetime.now(ZoneInfo('UTC')) + timedelta(hours=pin_duration)
-                    unpin_job_name = f"unpin_{job_id}_msg_{posted_message_id}"
-
-                    context.application.job_queue.run_once(
-                        execute_unpin_job,
-                        when=unpin_time_utc,
-                        data={'channel_id': channel_id, 'message_id': posted_message_id, 'job_id': job_id},
-                        name=unpin_job_name,
-                        job_kwargs={'misfire_grace_time': 600}
-                    )
+                context.application.job_queue.run_once(
+                    execute_unpin_job,
+                    when=unpin_time_utc,
+                    data={'channel_id': channel_id, 'message_id': posted_message_id, 'job_id': job_id},
+                    name=unpin_job_name,
+                    job_kwargs={'misfire_grace_time': 600}
+                )
             except TelegramError as e:
                 logger.error(f"Error pinning job {job_id}: {e}")
 
