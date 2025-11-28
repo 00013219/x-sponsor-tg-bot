@@ -31,6 +31,7 @@ from psycopg2.pool import SimpleConnectionPool
 from psycopg2 import errorcodes
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from text import TEXTS
 
 load_dotenv()
 
@@ -218,8 +219,8 @@ TEXTS = {
         'task_actions_title': "🛠️ **Управление задачей** #{task_id}",
         'task_edit_btn': "📝 Редактировать",
         'task_view_btn': "👀 Предпросмотр",
-        'task_delete_confirm': "Вы уверены, что хотите удалить задачу **{name}** (#{id})?",
-        'task_delete_success': "🗑️ Задача **{name}** (#{id}) удалена.",
+        'task_delete_confirm': "Вы уверены, что хотите удалить задачу \n{name} (#{id})?",
+        'task_delete_success': "🗑️ Задача:\n{name} (#{id}) удалена.",
 
         'task_channels_title': "📢 **Выбор каналов для размещения**",
         'channel_not_added': "❌ Канал не найден в вашем списке. Добавьте его через '🧩 Площадки'.",
@@ -5259,6 +5260,17 @@ async def task_select_calendar(update: Update, context: ContextTypes.DEFAULT_TYP
 async def calendar_navigation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Навигация по месяцам в календаре"""
     query = update.callback_query
+
+    task_id = context.user_data.get('current_task_id')
+
+    # Task 3: Validation
+    can_modify, error_msg = can_modify_task_parameter(task_id)
+    if not can_modify:
+        await query.answer(
+            get_text('task_error_no_name_or_message', context),
+            show_alert=False
+        )
+        return TASK_CONSTRUCTOR
     await query.answer()
 
     task_id = context.user_data.get('current_task_id')
@@ -5558,6 +5570,16 @@ async def calendar_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def task_select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Нажата кнопка '🕐 Время' (Задача 3: вывод выбранных слотов)"""
     query = update.callback_query
+
+    task_id = context.user_data.get('current_task_id')
+    # Task 3: Validation
+    can_modify, error_msg = can_modify_task_parameter(task_id)
+    if not can_modify:
+        await query.answer(
+            get_text('task_error_no_name_or_message', context),
+            show_alert=False
+        )
+        return TASK_CONSTRUCTOR
     await query.answer()
 
     task_id = context.user_data.get('current_task_id')
@@ -6218,7 +6240,7 @@ async def task_delete_confirm_yes(update: Update, context: ContextTypes.DEFAULT_
     if 'current_task_id' in context.user_data:
         del context.user_data['current_task_id']
 
-    text = get_text('task_delete_success', context).format(name=escape_markdown(task_name), id=task_id)
+    text = get_text('task_delete_success', context).format(name=task_name, id=task_id)
     await query.edit_message_text(text)
 
     # Возвращаемся в Мои задачи (FIX TASK 2)
@@ -6246,7 +6268,7 @@ async def task_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     task = get_task_details(task_id)
     task_name = task.get('task_name') or get_text('task_default_name', context)
 
-    text = get_text('task_delete_confirm', context).format(name=escape_markdown(task_name), id=task_id)
+    text = get_text('task_delete_confirm', context).format(name=task_name, id=task_id)
 
     keyboard = InlineKeyboardMarkup([
         [
