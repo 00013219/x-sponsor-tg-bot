@@ -5163,13 +5163,19 @@ async def task_toggle_channel(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def task_select_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Нажата кнопка '📅 Календарь' (Refreshes the view)"""
     query = update.callback_query
-    # We do NOT call query.answer() here if it was called in the parent function (like calendar_day_select)
-    # But if called directly from menu, we need it.
-    # To be safe, we try-catch answer or check if it's a fresh call.
-    try:
-        await query.answer()
-    except:
-        pass
+
+    task_id = context.user_data.get('current_task_id')
+
+    # Task 3: Validation - Check if name or message is set
+    can_modify, error_msg = can_modify_task_parameter(task_id)
+    if not can_modify:
+        await query.answer(
+            get_text('task_error_no_name_or_message', context),
+            show_alert=False
+        )
+        return TASK_SELECT_CHANNELS
+
+    await query.answer()
 
     task_id = context.user_data.get('current_task_id')
     user_tz_str = context.user_data.get('timezone', 'Europe/Moscow')
