@@ -5173,7 +5173,7 @@ async def task_select_calendar(update: Update, context: ContextTypes.DEFAULT_TYP
             get_text('task_error_no_name_or_message', context),
             show_alert=False
         )
-        return TASK_SELECT_CHANNELS
+        return TASK_CONSTRUCTOR
 
     await query.answer()
 
