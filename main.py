@@ -2136,6 +2136,7 @@ Lassen Sie uns beginnen! Bitte wählen Sie Ihre Sprache:""",
     }
 }
 
+
 # Города и их таймзоны с UTC offset
 # Города и их таймзоны с UTC offset
 TIMEZONES = {
@@ -3171,10 +3172,10 @@ def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
     # --- Construct Keyboard ---
     keyboard = [
         [InlineKeyboardButton(get_text('task_set_name_btn', context), callback_data="task_set_name")],
-        [InlineKeyboardButton(f"{get_text('task_select_channels_btn', context)} {'✅' if has_channels else '❌'}",
-                              callback_data="task_select_channels")],
         [InlineKeyboardButton(f"{get_text('task_set_message_btn', context)} {'✅' if has_message else '❌'}",
                               callback_data="task_set_message")],
+        [InlineKeyboardButton(f"{get_text('task_select_channels_btn', context)} {'✅' if has_channels else '❌'}",
+                              callback_data="task_select_channels")],
         [
             InlineKeyboardButton(get_text('task_select_calendar_btn', context), callback_data="task_select_calendar"),
             InlineKeyboardButton(get_text('task_select_time_btn', context), callback_data="task_select_time")
