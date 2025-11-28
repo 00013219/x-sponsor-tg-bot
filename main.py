@@ -2562,22 +2562,19 @@ async def refresh_task_jobs(task_id: int, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def delete_pin_service_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Task 1: Immediately removes the 'Message Pinned' service message.
-    Modified to be more aggressive: attempts deletion regardless of who pinned it
-    (useful for channels where from_user might be missing or different).
-    """
-    if not update.message or not update.message.pinned_message:
+    msg = update.message or update.channel_post or update.edited_channel_post
+    if not msg:
         return
 
-    # UPDATED: Removed the 'if update.message.from_user.id == context.bot.id' check.
-    # We now try to delete ANY pin service message in the chat where the bot operates.
+    if not msg.pinned_message:
+        return
+
     try:
-        await update.message.delete()
-        logger.info(f"Deleted pin service message in chat {update.message.chat_id}")
+        await msg.delete()
+        logger.info("Deleted pin service message")
     except Exception as e:
-        # Silently fail if we don't have permissions or message is too old
         logger.warning(f"Failed to delete pin service message: {e}")
+
 
 
 # --- Инициализация БД (ПОЛНОСТЬЮ НОВАЯ СХЕМА) ---
@@ -7667,10 +7664,13 @@ def main():
         allow_reentry=True
     )
 
-    application.add_handler(conv_handler)
-    application.add_handler(CommandHandler("jobs", debug_jobs))
+    application.add_handler(
+        MessageHandler(filters.StatusUpdate.PINNED_MESSAGE, delete_pin_service_message),
+        group=0
+    )
 
-    application.add_handler(MessageHandler(filters.StatusUpdate.PINNED_MESSAGE, delete_pin_service_message))
+    application.add_handler(conv_handler, group=1)
+    application.add_handler(CommandHandler("jobs", debug_jobs))
 
     # --- НОВЫЕ ОБРАБОТЧИКИ ПЛАТЕЖЕЙ ---
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
