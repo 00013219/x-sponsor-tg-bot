@@ -808,7 +808,7 @@ Let's get started! Please select your language:""",
 
         'no_name': "No Name",
         'no_username': "No Username",
-        'what_you_wanna_do': "What you want to do?"
+        'what_you_wanna_do': "What do you want to do?"
     },
     'es': {
         'welcome_lang': """🤖 ¡Bienvenido a XSponsorBot!
