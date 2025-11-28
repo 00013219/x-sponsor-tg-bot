@@ -3,11 +3,12 @@
 import json
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time, timezone
 from typing import Optional, Dict, Any, List
 import re
 import calendar
 from enum import Enum
+from asyncio import sleep
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, ReplyKeyboardMarkup, KeyboardButton, \
     InputMediaPhoto, InputMediaVideo, InputMediaAudio, InputMediaDocument
@@ -31,6 +32,9 @@ from psycopg2.pool import SimpleConnectionPool
 from psycopg2 import errorcodes
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from watchfiles import awatch
+
 
 load_dotenv()
 
@@ -468,7 +472,10 @@ TEXTS = {
 
         'no_name': "Без названия",
         'no_username': "нет юзернейма",
-        'what_you_wanna_do': "Что вы хотите сделать?"
+        'what_you_wanna_do': "Что вы хотите сделать?",
+
+        'advertiser_will_be_notified': "📢 Рекламодатель @{username} будет уведомлен о публикациях",
+        'post_published_in_channel': "✅ Опубликовано сообщение\n📢 {название канала}\n📝 {название задачи}"
     },
     'en': {
         'welcome_lang': """🤖 Welcome to XSponsorBot!
@@ -808,7 +815,10 @@ Let's get started! Please select your language:""",
 
         'no_name': "No Name",
         'no_username': "No Username",
-        'what_you_wanna_do': "What do you want to do?"
+        'what_you_wanna_do': "What do you want to do?",
+
+        'advertiser_will_be_notified': "📢 Advertiser @{username} will be notified about the publications",
+        'post_published_in_channel': "✅ Post published\n📢 {channel_title}\n📝 {task_name}"
     },
     'es': {
         'welcome_lang': """🤖 ¡Bienvenido a XSponsorBot!
@@ -2372,33 +2382,84 @@ def generate_smart_name(text: str, context: ContextTypes.DEFAULT_TYPE, limit: in
 
 def determine_task_status_color(task_id: int) -> str:
     """
-    Logic:
-    🟢 Green: Future posts exist (Scheduled).
-    🟡 Yellow: No future posts, but posts are waiting for auto-deletion.
-    🔴 Red: No future posts, no pending deletions.
+    UPDATED Logic:
+    🟢 Green: Has future scheduled posts
+    🟡 Yellow: No future posts, but has posts waiting for auto-deletion
+    🔴 Red: All posts are done (published and either deleted or no auto-delete)
     """
-    # 1. Check for future schedules
-    scheduled = db_query(
-        "SELECT COUNT(*) as count FROM publication_jobs WHERE task_id = %s AND status = 'scheduled'",
-        (task_id,), fetchone=True
-    )
-    if scheduled and scheduled['count'] > 0:
-        return '🟢'
+    now_utc = datetime.now(ZoneInfo('UTC'))
 
-    # 2. Check for pending auto-deletions (Status is published, has auto_delete, not yet deleted)
+    # 1. Check for FUTURE schedules
+    future_scheduled = db_query("""
+        SELECT COUNT(*) as count 
+        FROM publication_jobs 
+        WHERE task_id = %s 
+        AND status = 'scheduled'
+    """, (task_id,), fetchone=True)
+
+    if future_scheduled and future_scheduled['count'] > 0:
+        return '🟢'  # Active: Has future posts
+
+    # 2. Check for posts WAITING for auto-deletion
+    # Condition: Status is published AND Auto-delete is ON (>0) AND Time hasn't passed yet
     pending_delete = db_query("""
         SELECT COUNT(*) as count 
         FROM publication_jobs 
         WHERE task_id = %s 
-          AND status = 'published' 
-          AND auto_delete_hours > 0
-    """, (task_id,), fetchone=True)
+        AND status = 'published'
+        AND auto_delete_hours > 0
+        AND published_at + (auto_delete_hours || ' hours')::INTERVAL > %s
+    """, (task_id, now_utc), fetchone=True)
 
     if pending_delete and pending_delete['count'] > 0:
-        return '🟡'
+        return '🟡'  # Finishing: Waiting for auto-deletion
 
-    # 3. Default
+    # 3. Default: Finished (Red)
+    # This covers: No jobs, jobs finished and deleted, jobs finished with no auto-delete
     return '🔴'
+
+
+def cleanup_past_schedules():
+    """
+    Removes schedule entries for dates that have already passed.
+    Should be run daily or when task is accessed.
+    """
+    try:
+        now_utc = datetime.now(ZoneInfo('UTC'))
+
+        # Get all tasks with specific dates
+        tasks_with_dates = db_query("""
+            SELECT DISTINCT ts.task_id, t.user_id
+            FROM task_schedules ts
+            JOIN tasks t ON ts.task_id = t.id
+            WHERE ts.schedule_date IS NOT NULL
+        """, fetchall=True)
+
+        for task_row in tasks_with_dates or []:
+            task_id = task_row['task_id']
+            user_id = task_row['user_id']
+
+            # Get user timezone
+            user_settings = get_user_settings(user_id)
+            user_tz_str = user_settings.get('timezone', 'Europe/Moscow')
+
+            try:
+                user_tz = ZoneInfo(user_tz_str)
+            except:
+                user_tz = ZoneInfo('UTC')
+
+            today_user = now_utc.astimezone(user_tz).date()
+
+            # Delete schedules with dates before today
+            db_query("""
+                DELETE FROM task_schedules
+                WHERE task_id = %s 
+                AND schedule_date < %s
+            """, (task_id, today_user), commit=True)
+
+        logger.info("✅ Cleaned up past schedule dates")
+    except Exception as e:
+        logger.error(f"Error during past schedule cleanup: {e}", exc_info=True)
 
 
 async def cancel_task_jobs(task_id: int, context: ContextTypes.DEFAULT_TYPE):
@@ -2432,7 +2493,7 @@ async def cancel_task_jobs(task_id: int, context: ContextTypes.DEFAULT_TYPE):
 def validate_task(task_id: int, context: ContextTypes.DEFAULT_TYPE) -> tuple[bool, str]:
     """
     Validates if a task has all required fields to be Active.
-    Strict Mode: Requires Message, Date, and Time.
+    UPDATED: Allows weekdays without specific dates.
     """
     task = get_task_details(task_id)
     if not task:
@@ -2447,24 +2508,22 @@ def validate_task(task_id: int, context: ContextTypes.DEFAULT_TYPE) -> tuple[boo
     if not channels:
         return False, get_text('task_error_no_channels', context)
 
-    # 3. Check Schedule (Strict: Must have specific DATE and TIME)
+    # 3. Check Schedule (UPDATED: Accept either dates OR weekdays)
     schedules = get_task_schedules(task_id)
-
-    # Check for at least one schedule with a non-null DATE
-    has_date = any(s.get('schedule_date') is not None for s in schedules)
-
-    # Check for at least one schedule with a non-null TIME
-    has_time = any(s.get('schedule_time') is not None for s in schedules)
 
     if not schedules:
         return False, get_text('task_error_no_schedule', context)
 
-    if not has_date:
-        # Localization key needs to be added for "Date required"
-        return False, "⚠️ Error: Date is required (Weekdays not allowed for creation)"
+    # Must have at least one date OR one weekday
+    has_date = any(s.get('schedule_date') is not None for s in schedules)
+    has_weekday = any(s.get('schedule_weekday') is not None for s in schedules)
+    has_time = any(s.get('schedule_time') is not None for s in schedules)
+
+    if not has_date and not has_weekday:
+        return False, "⚠️ Error: Select dates or weekdays"
 
     if not has_time:
-        return False, get_text('task_error_no_schedule', context)  # Or specific "Time required"
+        return False, get_text('task_error_no_schedule', context)
 
     return True, ""
 
@@ -2566,20 +2625,20 @@ async def refresh_task_jobs(task_id: int, context: ContextTypes.DEFAULT_TYPE):
         db_query("UPDATE tasks SET status = 'inactive' WHERE id = %s", (task_id,), commit=True)
         # Optionally notify user here
 
-
-async def delete_pin_service_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message or update.channel_post or update.edited_channel_post
-    if not msg:
-        return
-
-    if not msg.pinned_message:
-        return
-
-    try:
-        await msg.delete()
-        logger.info("Deleted pin service message")
-    except Exception as e:
-        logger.warning(f"Failed to delete pin service message: {e}")
+#
+# async def delete_pin_service_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+#     msg = update.message or update.channel_post or update.edited_channel_post
+#     if not msg:
+#         return
+#
+#     if not msg.pinned_message:
+#         return
+#
+#     try:
+#         await msg.delete()
+#         logger.info("Deleted pin service message")
+#     except Exception as e:
+#         logger.warning(f"Failed to delete pin service message: {e}")
 
 
 
@@ -3061,6 +3120,25 @@ def main_menu_keyboard(context: ContextTypes.DEFAULT_TYPE):
 
     return InlineKeyboardMarkup(keyboard)
 
+def get_user_task_count(user_id: int) -> int:
+    """Returns the total number of tasks (active or inactive) created by the user."""
+    result = db_query("SELECT COUNT(*) as count FROM tasks WHERE user_id = %s", (user_id,), fetchone=True)
+    return result['count'] if result else 0
+
+def create_new_task(user_id: int) -> Optional[int]:
+    """
+    Создает новую задачу (черновик).
+    (Based on existing INSERT logic)
+    """
+    result = db_query(""" 
+        INSERT INTO tasks (user_id, status) VALUES (%s, 'inactive') 
+        RETURNING id 
+    """, (user_id,), commit=True)
+    if result and 'id' in result:
+        logger.info(f"Создана новая задача ID: {result['id']} для user {user_id}")
+        return result['id']
+    return None
+
 
 def bottom_navigation_keyboard(context: ContextTypes.DEFAULT_TYPE):
     """Клавиатура навигации внизу экрана (как на изображении)"""
@@ -3091,10 +3169,7 @@ def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
     delete_val = 0
     push_val = False
     report_val = False
-
-    # UPDATED: Default post_type is now 'repost'
     post_type = 'repost'
-
     is_active = False
     has_message = False
     has_channels = False
@@ -3104,66 +3179,46 @@ def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
         delete_val = task.get('auto_delete_hours', 0)
         push_val = task.get('pin_notify', False)
         report_val = task.get('report_enabled', False)
-        post_type = task.get('post_type', 'repost')  # Fallback to repost
+        post_type = task.get('post_type', 'repost')
         is_active = task.get('status') == 'active'
         has_message = bool(task.get('content_message_id'))
-
         channels = get_task_channels(task_id)
         has_channels = bool(channels)
 
-    # --- Localization Helper ---
     lang = context.user_data.get('language_code', 'en')
-
     short_days_map = {'ru': 'д', 'en': 'd', 'es': 'd', 'fr': 'j', 'ua': 'д', 'de': 'T'}
     short_hours_map = {'ru': 'ч', 'en': 'h', 'es': 'h', 'fr': 'h', 'ua': 'г', 'de': 'h'}
     s_d = short_days_map.get(lang, 'd')
     s_h = short_hours_map.get(lang, 'h')
 
     def format_duration(hours):
-        if hours <= 0:
-            return get_text('duration_no', context)
-        if hours % 24 == 0:
-            return f"{hours // 24}{s_d}"
+        if hours <= 0: return get_text('duration_no', context)
+        if hours % 24 == 0: return f"{hours // 24}{s_d}"
         return f"{hours}{s_h}"
 
-    # --- Dynamic Button Labels ---
-
-    # Message Button with ✅/❌
+    # Buttons
     lbl_msg = get_text('task_set_message_btn', context)
     val_msg = "✅" if has_message else "❌"
-    btn_msg = f"{lbl_msg} {val_msg}"
 
-    # Channels Button with ✅/❌ (Optional, consistent style)
     lbl_ch = get_text('task_select_channels_btn', context)
     val_ch = "✅" if has_channels else "❌"
-    btn_ch = f"{lbl_ch} {val_ch}"
 
-    # 1. Pin
     lbl_pin = get_text('task_set_pin_btn', context)
-    val_pin = format_duration(pin_val)
-    btn_pin = f"{lbl_pin}: {val_pin}"
 
-    # 2. Push (Notify)
-    lbl_push = get_text('task_set_pin_notify_btn', context)
-    val_push = "✅" if push_val else "❌"
-    btn_push = f"{lbl_push}: {val_push}"
+    val_push = "✅" if push_val else "❌"  # Muted vs Sound
 
-    # 3. Auto-Delete
+    # Push (Notify) Button - Renaming concept to "Pin Notify"
+    lbl_push = get_text('alert_pin_notify_status', context).format(
+        status=val_push
+    )  # You should add a proper key 'task_set_pin_notify_btn' in TEXTS
+
     lbl_delete = get_text('task_set_delete_btn', context)
-    val_delete = format_duration(delete_val)
-    btn_delete = f"{lbl_delete}: {val_delete}"
-
-    # 4. Report
     lbl_report = get_text('task_set_report_btn', context)
     val_report = "✅" if report_val else "❌"
-    btn_report = f"{lbl_report}: {val_report}"
 
-    # 5. Post Type
     lbl_type = get_text('task_set_post_type_btn', context)
     val_type = "🤖" if post_type == 'from_bot' else "↪️"
-    btn_type = f"{lbl_type}: {val_type}"
 
-    # --- Action Button ---
     if is_active:
         action_btn = InlineKeyboardButton(get_text('task_btn_deactivate', context), callback_data="task_deactivate")
     else:
@@ -3172,33 +3227,36 @@ def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
     # --- Construct Keyboard ---
     keyboard = [
         [InlineKeyboardButton(get_text('task_set_name_btn', context), callback_data="task_set_name")],
-        [InlineKeyboardButton(f"{get_text('task_set_message_btn', context)} {'✅' if has_message else '❌'}",
-                              callback_data="task_set_message")],
-        [InlineKeyboardButton(f"{get_text('task_select_channels_btn', context)} {'✅' if has_channels else '❌'}",
-                              callback_data="task_select_channels")],
+        [InlineKeyboardButton(f"{lbl_msg} {val_msg}", callback_data="task_set_message")],
+        [InlineKeyboardButton(f"{lbl_ch} {val_ch}", callback_data="task_select_channels")],
         [
             InlineKeyboardButton(get_text('task_select_calendar_btn', context), callback_data="task_select_calendar"),
             InlineKeyboardButton(get_text('task_select_time_btn', context), callback_data="task_select_time")
         ],
-        [
-            InlineKeyboardButton(f"{get_text('task_set_pin_btn', context)}: {format_duration(pin_val)}",
-                                 callback_data="task_set_pin"),
-            InlineKeyboardButton(f"{get_text('task_set_pin_notify_btn', context)}: {'✅' if push_val else '❌'}",
-                                 callback_data="task_set_pin_notify")
-        ],
-        [InlineKeyboardButton(f"{get_text('task_set_delete_btn', context)}: {format_duration(delete_val)}",
-                              callback_data="task_set_delete")],
-        [InlineKeyboardButton(f"{get_text('task_set_report_btn', context)}: {'✅' if report_val else '❌'}",
-                              callback_data="task_set_report")],
-        [InlineKeyboardButton(get_text('task_set_advertiser_btn', context), callback_data="task_set_advertiser")],
-        [InlineKeyboardButton(btn_type, callback_data="task_set_post_type")],
-        [InlineKeyboardButton(get_text('task_delete_btn', context), callback_data="task_delete")],
-        [action_btn],
-        [
-            InlineKeyboardButton(get_text('back_btn', context), callback_data="nav_my_tasks"),
-            InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu")
-        ],
     ]
+
+    # Pin Row
+    pin_row = [InlineKeyboardButton(f"{lbl_pin}: {format_duration(pin_val)}", callback_data="task_set_pin")]
+
+    # TASK 7: Only add Notify button if Pin is ON
+    if pin_val > 0:
+        pin_row.append(InlineKeyboardButton(lbl_push, callback_data="task_set_pin_notify"))
+
+    keyboard.append(pin_row)
+
+    keyboard.append(
+        [InlineKeyboardButton(f"{lbl_delete}: {format_duration(delete_val)}", callback_data="task_set_delete")])
+    keyboard.append([InlineKeyboardButton(f"{lbl_report}: {val_report}", callback_data="task_set_report")])
+    keyboard.append(
+        [InlineKeyboardButton(get_text('task_set_advertiser_btn', context), callback_data="task_set_advertiser")])
+    keyboard.append([InlineKeyboardButton(f"{lbl_type}: {val_type}", callback_data="task_set_post_type")])
+    keyboard.append([InlineKeyboardButton(get_text('task_delete_btn', context), callback_data="task_delete")])
+    keyboard.append([action_btn])
+    keyboard.append([
+        InlineKeyboardButton(get_text('back_btn', context), callback_data="nav_my_tasks"),
+        InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu")
+    ])
+
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -4386,14 +4444,25 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
     dates_text = get_text('status_not_selected', context)
     weekdays_text = get_text('status_not_selected', context)
 
+    # --- TASK 4 FIX: Filter out past dates for display ---
+    user_tz_str = context.user_data.get('timezone', 'Europe/Moscow')
+    try:
+        user_tz = ZoneInfo(user_tz_str)
+    except:
+        user_tz = ZoneInfo('UTC')
+    today_user = datetime.now(user_tz).date()
+
     unique_dates = sorted(list(set([s['schedule_date'] for s in schedules if s['schedule_date']])))
+    # Filter: Only show dates >= today
+    future_dates = [d for d in unique_dates if d >= today_user]
+
     unique_weekdays = sorted(list(set([s['schedule_weekday'] for s in schedules if s['schedule_weekday'] is not None])))
 
-    if unique_dates:
-        if len(unique_dates) > 5:
-            dates_text = get_text('status_dates_count', context).format(count=len(unique_dates), suffix=count_suffix)
+    if future_dates:
+        if len(future_dates) > 5:
+            dates_text = get_text('status_dates_count', context).format(count=len(future_dates), suffix=count_suffix)
         else:
-            dates_text = "✅ " + ", ".join([d.strftime('%d.%m') for d in unique_dates])
+            dates_text = "✅ " + ", ".join([d.strftime('%d.%m') for d in future_dates])
     elif unique_weekdays:
         try:
             wd_names_str = get_text('calendar_weekdays_short', context)
@@ -4402,6 +4471,9 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
         except:
             weekdays_text = get_text('status_weekdays_count', context).format(count=len(unique_weekdays),
                                                                               suffix=days_suffix)
+    elif unique_dates and not future_dates:
+        # If dates exist but all are in the past
+        dates_text = "⚠️ All dates passed"
 
     times_text = get_text('status_not_selected', context)
     unique_times = sorted(list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']])))
@@ -4446,7 +4518,9 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
     status_yes = get_text('status_yes', context)
     status_no = get_text('status_no', context)
 
+    # Pin Notify Status Text
     pin_notify_status = status_yes if task['pin_notify'] else status_no
+
     report_status = status_yes if task['report_enabled'] else status_no
     post_type_status = get_text('status_from_bot', context) if task['post_type'] == 'from_bot' else get_text(
         'status_repost', context)
@@ -4455,7 +4529,7 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
                                                                      suffix=count_suffix) if channels_count > 0 else get_text(
         'status_not_selected', context)
 
-    # --- MESSAGE STATUS: Show snippet if available ---
+    # Message Status
     if task['content_message_id']:
         if task.get('message_snippet'):
             message_status = f"✅ {task['message_snippet']}"
@@ -4463,7 +4537,6 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
             message_status = get_text('status_set', context)
     else:
         message_status = get_text('status_not_set', context)
-    # -------------------------------------------------
 
     title = get_text('task_constructor_title', context)
     if task_id:
@@ -4475,7 +4548,7 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
     text += f"{get_text('header_channels', context)}{channels_status}\n"
     text += f"{get_text('header_message', context)}{message_status}\n"
 
-    if unique_dates:
+    if future_dates:
         text += f"{get_text('header_date', context)}{dates_text}\n"
     else:
         text += f"{get_text('header_weekdays', context)}{weekdays_text}\n"
@@ -4484,7 +4557,11 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
     text += f"{get_text('header_pin', context)}{pin_text}\n"
     text += f"{get_text('header_autodelete', context)}{delete_text}\n"
     text += f"{get_text('header_post_type', context)}{post_type_status}\n"
-    text += f"{get_text('header_pin_notify', context)}{pin_notify_status}\n"
+
+    # TASK 7: Only show Pin Notify Header if Pin Duration > 0
+    if task['pin_duration'] > 0:
+        text += f"{get_text('header_pin_notify', context)}{pin_notify_status}\n"
+
     text += f"{get_text('header_report', context)}{report_status}\n"
     text += f"{get_text('header_advertiser', context)}{advertiser_text}\n"
 
@@ -4534,12 +4611,46 @@ async def show_task_constructor(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def task_constructor_entrypoint(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Точка входа: Просто очищаем ID текущей задачи.
-    Задача будет создана в БД только при первом изменении параметра.
+    Точка входа: Проверяет лимит на создание задач по тарифу.
+    Если лимит не превышен, очищает ID текущей задачи и перенаправляет в конструктор.
     """
     query = update.callback_query
     if query:
         await query.answer()
+
+    user_id = context.user_data['user_id']
+    # Предполагается, что get_tariff_limits доступна
+    user_tariff = context.user_data.get('tariff', 'free')
+
+    # 1. Получаем лимиты
+    # NOTE: Предполагается, что get_tariff_limits возвращает словарь, включая 'tasks'
+    limits = get_tariff_limits(user_tariff)
+    max_tasks = limits['tasks']
+
+    # 2. Получаем текущее количество задач
+    # NOTE: Предполагается, что get_user_task_count доступна
+    current_task_count = get_user_task_count(user_id)
+
+    # 3. Проверка лимита
+    if current_task_count >= max_tasks:
+        # Формируем и отправляем сообщение об ошибке
+        error_text = get_text('limit_error_tasks', context).format(
+            current=current_task_count,
+            max=max_tasks,
+            tariff=limits['name']
+        )
+
+        # Отправляем ошибку в зависимости от того, это колбэк или команда
+        if query:
+            # Используем reply_text, чтобы сообщение не пропало после ответа на query
+            await query.message.reply_text(error_text)
+        else:
+            await update.message.reply_text(error_text)
+
+        # Возвращаемся в меню со списком задач
+        return await nav_my_tasks(update, context)
+
+        # 4. Лимит не превышен - продолжаем настройку новой задачи
 
     # Очищаем ID, чтобы система знала, что мы в режиме "Новая задача"
     if 'current_task_id' in context.user_data:
@@ -5375,7 +5486,6 @@ async def calendar_day_select(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = query.from_user.id
     task_id = get_or_create_task_id(user_id, context)
 
-    # Task 3: Validation
     can_modify, error_msg = can_modify_task_parameter(task_id)
     if not can_modify:
         await query.answer(
@@ -5412,17 +5522,17 @@ async def calendar_day_select(update: Update, context: ContextTypes.DEFAULT_TYPE
             await query.answer(alert_text, show_alert=False)
             return CALENDAR_VIEW
 
-        # Preserve times
+        # UPDATED: Preserve times independently
         times = list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']]))
         if times:
             for time_str in times:
                 add_task_schedule(task_id, 'datetime', schedule_date=date_str, schedule_time=time_str)
         else:
+            # No times selected yet - just add the date
             add_task_schedule(task_id, 'date', schedule_date=date_str)
 
         await query.answer()
 
-    # 3. Hot Reload & Refresh
     await refresh_task_jobs(task_id, context)
     return await task_select_calendar(update, context)
 
@@ -5632,13 +5742,12 @@ async def task_select_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def time_slot_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Выбор временного слота (Задача 3: обновление списка)"""
+    """Time slot selection (Task 3: update list display)"""
     query = update.callback_query
 
     user_id = query.from_user.id
     task_id = get_or_create_task_id(user_id, context)
 
-    # Task 3: Validation
     can_modify, error_msg = can_modify_task_parameter(task_id)
     if not can_modify:
         await query.answer(
@@ -5668,21 +5777,30 @@ async def time_slot_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer(alert_text, show_alert=False)
             return TIME_SELECTION
 
+        # UPDATED: Apply time to existing dates/weekdays independently
         dates = [s for s in schedules if s['schedule_date']]
+        weekdays = [s for s in schedules if s['schedule_weekday'] is not None]
+
         if dates:
             unique_dates_data = {d['schedule_date'] for d in dates}
             for date_val in unique_dates_data:
                 add_task_schedule(task_id, 'datetime', schedule_date=date_val, schedule_time=time_str)
+        elif weekdays:
+            unique_weekdays = {w['schedule_weekday'] for w in weekdays}
+            for wd in unique_weekdays:
+                add_task_schedule(task_id, 'weekday_and_time', schedule_weekday=wd, schedule_time=time_str)
         else:
+            # No dates/weekdays selected yet - just add the time
             add_task_schedule(task_id, 'time', schedule_time=time_str)
+
         await query.answer()
 
     await refresh_task_jobs(task_id, context)
 
-    # --- Обновление UI с новым списком ---
+    # Update UI with new list
     schedules = get_task_schedules(task_id)
     selected_times = list(set([s['schedule_time'].strftime('%H:%M') for s in schedules if s['schedule_time']]))
-    selected_times.sort()  # Сортировка
+    selected_times.sort()
 
     user_tz = context.user_data.get('timezone', 'Europe/Moscow')
     text = get_text('time_selection_title', context)
@@ -5690,7 +5808,6 @@ async def time_slot_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text += f"\n{get_text('time_slots_limit', context).format(slots=max_slots)} (Тариф: {limits['name']})"
     text += f"\n{get_text('time_selected_slots', context).format(count=len(selected_times), slots=max_slots)}"
 
-    # Вывод списка
     if selected_times:
         times_str = ", ".join(selected_times)
         label = get_text('selected_time', context)
@@ -5705,118 +5822,160 @@ async def time_slot_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def create_publication_jobs_for_task(task_id: int, user_tz: str, application: Application) -> int:
     """
-    Создает publication_jobs и планирует их с помощью application.job_queue.
-    Возвращает количество успешно созданных задач.
+    Creates the FIRST upcoming publication_job for the task.
+    FIXED: Allows multiple time slots per day for Weekdays.
     """
     task = get_task_details(task_id)
-    if not task:
-        logger.error(f"Task {task_id} не найдена в create_publication_jobs_for_task")
-        return 0
-
     schedules = get_task_schedules(task_id)
     channels = get_task_channels(task_id)
 
     if not schedules or not channels:
-        logger.error(f"Нет расписания или каналов для задачи {task_id}")
         return 0
 
     try:
         tz = ZoneInfo(user_tz)
-    except ZoneInfoNotFoundError:
-        logger.warning(f"Неверная таймзона {user_tz} для user {task['user_id']}. Используется UTC.")
+    except:
         tz = ZoneInfo('UTC')
 
     job_count = 0
     now_utc = datetime.now(ZoneInfo('UTC'))
+    now_local = now_utc.astimezone(tz)
+
+    # Allow jobs that are up to 60 seconds in the past (processing lag) to run immediately
+    buffer_time = now_utc - timedelta(seconds=60)
 
     for schedule in schedules:
-        # Пропускаем, если не установлено время
-        if not schedule['schedule_time']:
-            continue
-
-        # Если дата не установлена, используем сегодняшнюю дату в таймзоне юзера
-        schedule_date = schedule['schedule_date']
-        if not schedule_date:
-            schedule_date = datetime.now(tz).date()
+        if not schedule['schedule_time']: continue
 
         schedule_time = schedule['schedule_time']
+        schedule_date = schedule.get('schedule_date')
+        schedule_weekday = schedule.get('schedule_weekday')
 
-        # Комбинируем дату и время
-        try:
-            naive_dt = datetime.combine(schedule_date, schedule_time)
-            # Привязываем таймзону пользователя
-            local_dt = naive_dt.replace(tzinfo=tz)
-        except Exception as e:
-            logger.error(
-                f"Ошибка комбинирования datetime для задачи {task_id}: {schedule_date} {schedule_time} с tz {user_tz}. Ошибка: {e}")
-            continue
+        # --- Case 1: Specific Date ---
+        if schedule_date:
+            try:
+                naive_dt = datetime.combine(schedule_date, schedule_time)
+                local_dt = naive_dt.replace(tzinfo=tz)
+                utc_dt = local_dt.astimezone(ZoneInfo('UTC'))
 
-        # Конвертируем в UTC
-        utc_dt = local_dt.astimezone(ZoneInfo('UTC'))
+                if utc_dt < buffer_time: continue
 
-        # Пропускаем задачи в прошлом
-        if utc_dt < now_utc:
-            logger.warning(f"Пропуск задачи в прошлом для task {task_id} в {utc_dt} (сейчас {now_utc})")
-            continue
+                for channel_id in channels:
+                    exists = db_query("""
+                        SELECT 1 FROM publication_jobs 
+                        WHERE task_id=%s AND channel_id=%s AND scheduled_time_utc=%s AND status='scheduled'
+                    """, (task['id'], channel_id, utc_dt), fetchone=True)
 
-        # Создаем задачи на публикацию для каждого канала
-        for channel_id in channels:
-            job_data = db_query("""
-                INSERT INTO publication_jobs (
-                    task_id, user_id, channel_id, scheduled_time_utc,
-                    content_message_id, content_chat_id, pin_duration,
-                    pin_notify, auto_delete_hours, advertiser_user_id, status
+                    if not exists:
+                        if _create_single_publication_job(task, channel_id, utc_dt, application):
+                            job_count += 1
+            except Exception as e:
+                logger.error(f"Error scheduling specific date: {e}")
+
+        # --- Case 2: Weekday (e.g., "Friday") ---
+        elif schedule_weekday is not None:
+            # --- REMOVED THE GENERIC 'future_jobs' CHECK HERE ---
+            # We must calculate the specific target time first to allow multiple slots per day.
+
+            # Calculate the next weekday
+            current_wd = now_local.weekday()
+            days_ahead = (schedule_weekday - current_wd) % 7
+
+            # If it's today, check if the time has passed
+            if days_ahead == 0:
+                today_target = now_local.replace(
+                    hour=schedule_time.hour,
+                    minute=schedule_time.minute,
+                    second=0,
+                    microsecond=0
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'scheduled')
-                RETURNING id
-            """, (
-                task_id, task['user_id'], channel_id, utc_dt,
-                task['content_message_id'], task['content_chat_id'],
-                task['pin_duration'], task['pin_notify'],
-                task['auto_delete_hours'], task['advertiser_user_id']
-            ), commit=True)
+                # If target is older than now (minus buffer), move to next week
+                if today_target < (now_local - timedelta(seconds=60)):
+                    days_ahead = 7
 
-            if job_data and 'id' in job_data:
-                job_id = job_data['id']
-                job_name = f"pub_{job_id}"
+            # Calculate target local time
+            target_local_date = now_local.date() + timedelta(days=days_ahead)
+            target_local_dt = datetime(
+                target_local_date.year,
+                target_local_date.month,
+                target_local_date.day,
+                schedule_time.hour,
+                schedule_time.minute,
+                schedule_time.second,
+                tzinfo=tz
+            )
 
-                # Планируем через application.job_queue
-                try:
-                    # ***** ИЗМЕНЕНИЕ ЗДЕСЬ *****
-                    # Было: application.job_queue.add_job(
-                    #           trigger=DateTrigger(run_date=utc_dt),
-                    #           kwargs={'job_id': job_id}, ...
-                    #       )
-                    # Стало:
-                    application.job_queue.run_once(
-                        execute_publication_job,
-                        when=utc_dt,
-                        data={'job_id': job_id},
-                        name=job_name,
-                        job_kwargs={'misfire_grace_time': 300}  # 5 минут
-                    )
-                    # ***** КОНЕЦ ИЗМЕНЕНИЯ *****
+            # Convert to UTC
+            target_utc_dt = target_local_dt.astimezone(ZoneInfo("UTC"))
 
-                    # Обновляем aps_job_id
-                    db_query(
-                        "UPDATE publication_jobs SET aps_job_id = %s WHERE id = %s",
-                        (job_name, job_id),
-                        commit=True
-                    )
-                    job_count += 1
-                    logger.info(f"Запланирована задача {job_id} на {utc_dt} (канал {channel_id})")
+            # Double check against buffer just in case calculations were weird
+            if target_utc_dt < buffer_time:
+                target_utc_dt += timedelta(days=7)
 
-                except Exception as e:
-                    logger.error(f"Не удалось запланировать задачу {job_id} через job_queue: {e}", exc_info=True)
-                    db_query(
-                        "UPDATE publication_jobs SET status = 'failed' WHERE id = %s",
-                        (job_id,),
-                        commit=True
-                    )
-            else:
-                logger.error(f"Не удалось вставить publication_job в БД для задачи {task_id}")
+            # Create the job (Check for SPECIFIC duplicates)
+            for channel_id in channels:
+                # Check if THIS specific time slot is already booked
+                exists = db_query("""
+                    SELECT 1 FROM publication_jobs 
+                    WHERE task_id=%s AND channel_id=%s AND scheduled_time_utc=%s AND status='scheduled'
+                """, (task['id'], channel_id, target_utc_dt), fetchone=True)
+
+                if not exists:
+                    if _create_single_publication_job(task, channel_id, target_utc_dt, application):
+                        job_count += 1
 
     return job_count
+
+
+def _create_single_publication_job(task: dict, channel_id: int, utc_dt: datetime, application: Application) -> Optional[int]:
+    """Helper function to create a single publication job in DB and JobQueue"""
+
+    # 1. Insert into DB
+    job_data = db_query("""
+        INSERT INTO publication_jobs (
+            task_id, user_id, channel_id, scheduled_time_utc,
+            content_message_id, content_chat_id, pin_duration,
+            pin_notify, auto_delete_hours, advertiser_user_id, status
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'scheduled')
+        RETURNING id
+    """, (
+        task['id'], task['user_id'], channel_id, utc_dt,
+        task['content_message_id'], task['content_chat_id'],
+        task['pin_duration'], task['pin_notify'],
+        task['auto_delete_hours'], task['advertiser_user_id']
+    ), commit=True)
+
+    if job_data and 'id' in job_data:
+        job_id = job_data['id']
+        job_name = f"pub_{job_id}"
+
+        try:
+            # 2. Schedule in Telegram JobQueue
+            application.job_queue.run_once(
+                execute_publication_job,
+                when=utc_dt,
+                data={'job_id': job_id},
+                name=job_name,
+                job_kwargs={'misfire_grace_time': 300}  # 5 minutes grace period
+            )
+
+            # 3. Update DB with job name
+            db_query(
+                "UPDATE publication_jobs SET aps_job_id = %s WHERE id = %s",
+                (job_name, job_id),
+                commit=True
+            )
+            logger.info(f"✅ Scheduled job {job_id} at {utc_dt} (channel {channel_id})")
+            return job_id
+
+        except Exception as e:
+            logger.error(f"❌ Failed to schedule job {job_id} via job_queue: {e}", exc_info=True)
+            db_query("UPDATE publication_jobs SET status = 'failed' WHERE id = %s", (job_id,), commit=True)
+            return None
+    else:
+        logger.error(f"Failed to insert publication_job in DB for task {task['id']}")
+        return None
 
 
 async def time_custom(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5825,11 +5984,16 @@ async def time_custom(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     text = get_text('time_ask_custom', context)
-    await query.edit_message_text(
-        text,
-        reply_markup=back_to_constructor_keyboard(context)
-    )
+
+    # TASK 2 FIX: Back button leads to Time Selection, not Constructor
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(get_text('back_btn', context), callback_data="task_select_time")],
+        [InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu")]
+    ])
+
+    await query.edit_message_text(text, reply_markup=keyboard)
     return TASK_SET_CUSTOM_TIME
+
 
 
 async def time_receive_custom(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5872,41 +6036,60 @@ async def time_receive_custom(update: Update, context: ContextTypes.DEFAULT_TYPE
         # --- END CHECK ---
 
         dates = [s for s in schedules if s['schedule_date']]
+        weekdays = [s for s in schedules if s['schedule_weekday'] is not None]
+
         if dates:
             unique_dates_data = {d['schedule_date'] for d in dates}
             for date_val in unique_dates_data:
                 add_task_schedule(task_id, 'datetime', schedule_date=date_val, schedule_time=time_str)
+
+        elif weekdays:  # <--- ADDED THIS BLOCK
+            unique_weekdays = {w['schedule_weekday'] for w in weekdays}
+            for wd in unique_weekdays:
+                add_task_schedule(task_id, 'weekday_and_time', schedule_weekday=wd, schedule_time=time_str)
+
         else:
             add_task_schedule(task_id, 'time', schedule_time=time_str)
 
     # --- TRIGGER HOT RELOAD ---
     await refresh_task_jobs(task_id, context)
 
-    await update.message.reply_text(get_text('time_saved', context))
+    msg = await update.message.reply_text(get_text('time_saved', context))
+    await sleep(3)
+
+    # delete the message
+    try:
+        await msg.delete()
+    except:
+        pass
+
     return await show_task_constructor(update, context)
 
 
 async def time_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Clear all selected times"""
+    """Clear all selected times but PRESERVE dates and weekdays"""
     query = update.callback_query
     await query.answer()
 
     task_id = context.user_data.get('current_task_id')
 
-    # FIXED: Keep dates but remove times
+    # 1. Capture existing Dates AND Weekdays before wiping
     schedules = get_task_schedules(task_id)
     dates = [s['schedule_date'] for s in schedules if s['schedule_date']]
+    weekdays = [s['schedule_weekday'] for s in schedules if s['schedule_weekday'] is not None]
 
+    # 2. Wipe all schedules
     remove_task_schedules(task_id)
 
-    # Re-add dates without times
+    # 3. Restore Dates (without time)
     for date in set(dates):  # Use set to avoid duplicates
         add_task_schedule(task_id, 'date', schedule_date=date)
 
-    db_query("UPDATE task_schedules SET schedule_time = NULL WHERE task_id = %s",
-             (task_id,), commit=True)
+    # 4. Restore Weekdays (without time) <-- THIS WAS MISSING
+    for wd in set(weekdays):
+        add_task_schedule(task_id, 'weekday', schedule_weekday=wd)
 
-    # --- ИСПРАВЛЕНИЕ ЛОГИКИ ЛИМИТОВ ---
+    # UI Update Logic
     user_tz = context.user_data.get('timezone', 'Europe/Moscow')
     user_tariff = context.user_data.get('tariff', 'free')
 
@@ -5917,7 +6100,6 @@ async def time_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text += f"\n{get_text('time_tz_info', context).format(timezone=user_tz)}"
     text += f"\n{get_text('time_slots_limit', context).format(slots=max_slots)} (Тариф: {limits['name']})"
     text += f"\n{get_text('time_selected_slots', context).format(count=0, slots=max_slots)}"
-    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
     await query.edit_message_text(
         text,
@@ -6090,7 +6272,9 @@ async def task_receive_advertiser(update: Update, context: ContextTypes.DEFAULT_
 
     # FIXED: Send confirmation without formatting issues
     confirmation = get_text('task_advertiser_saved', context) + "\n"
-    confirmation += f"📢 Рекламодатель @{username} будет уведомлен о публикациях"
+    confirmation += get_text('advertiser_will_be_notified', context).format(
+        username=username
+    )
 
     await update.message.reply_text(confirmation)
 
@@ -6100,33 +6284,40 @@ async def task_receive_advertiser(update: Update, context: ContextTypes.DEFAULT_
 
 # --- Остальные настройки ---
 async def task_set_pin_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Пуш уведомление"""
+    """
+    Handles the toggle for the 'Pin Sound' feature.
+    """
     query = update.callback_query
 
-    task_id = context.user_data.get('current_task_id')
+    # --- FIX: Prevent Timeout Crash ---
+    try:
+        await query.answer()
+    except Exception:
+        pass
+        # ----------------------------------
 
-    # Task 3: Validation
-    can_modify, error_msg = can_modify_task_parameter(task_id)
-    if not can_modify:
-        await query.answer(
-            get_text('task_error_no_name_or_message', context),
-            show_alert=False
-        )
+    task_id = context.user_data.get('current_task_id')
+    if not task_id:
         return TASK_CONSTRUCTOR
 
-    await query.answer()
-
     task = get_task_details(task_id)
+    current_status = task.get('pin_notify', False)
 
-    # Переключаем значение
-    new_value = not task['pin_notify']
-    await update_task_field(task_id, 'pin_notify', new_value, context)
+    # Toggle status
+    new_status = not current_status
 
-    status_text = get_text('status_yes', context) if new_value else get_text('status_no', context)
-    alert_text = get_text('alert_pin_notify_status', context).format(status=status_text)
-    await query.answer(alert_text)
+    await update_task_field(task_id, 'pin_notify', new_status, context)
 
-    return await show_task_constructor(update, context)
+    # Refresh screen
+    text = get_task_constructor_text(context)
+    keyboard = task_constructor_keyboard(context)
+
+    try:
+        await query.edit_message_text(text, reply_markup=keyboard, parse_mode='Markdown')
+    except Exception:
+        pass
+
+    return TASK_CONSTRUCTOR
 
 
 async def task_set_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6320,97 +6511,54 @@ async def task_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not channels:
         errors.append(get_text('task_error_no_channels', context))
 
-    # Проверка расписания (STRICT MODE ADDED HERE)
+    # Проверка расписания
     schedules = get_task_schedules(task_id)
 
-    # Strict Rule: Must have DATE and TIME.
+    # TASK 1 FIX: Allow either specific date OR weekday
     has_date = any(s.get('schedule_date') is not None for s in schedules)
+    has_weekday = any(s.get('schedule_weekday') is not None for s in schedules)
     has_time = any(s.get('schedule_time') is not None for s in schedules)
 
     if not schedules:
         errors.append(get_text('task_error_no_schedule', context))
     else:
-        if not has_date:
-            errors.append("❌ Date is missing (Select specific dates)")
+        # Require Time AND (Date OR Weekday)
+        if not has_date and not has_weekday:
+            errors.append("❌ Date or Weekday is missing")
         if not has_time:
             errors.append("❌ Time is missing")
 
-    # Если есть ошибки, показываем их и не активируем
+    # Если есть ошибки, показываем их
     if errors:
         header = get_text('task_validation_header', context)
         error_text = f"{header}\n\n" + "\n".join(errors)
-
-        keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor"),
-                InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu")
-            ]
-        ])
-
-        await query.edit_message_text(
-            error_text,
-            reply_markup=keyboard
-        )
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor"),
+            InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu")
+        ]])
+        await query.edit_message_text(error_text, reply_markup=keyboard)
         return TASK_CONSTRUCTOR
 
     # --- 2. Активация ---
-
-    # Обновляем статус в БД
     await update_task_field(task_id, 'status', 'active', context)
-
-    # ВАЖНО: Очищаем старые джобы перед созданием новых
     await cancel_task_jobs(task_id, context)
 
-    # Создаем новые задания (Jobs)
     user_tz = context.user_data.get('timezone', 'Europe/Moscow')
-
     try:
         job_count = create_publication_jobs_for_task(task_id, user_tz, context.application)
         logger.info(f"Task {task_id} activated. Jobs created: {job_count}")
-
     except Exception as e:
-        logger.error(f"Error creating publication jobs for task {task_id}: {e}", exc_info=True)
-        error_msg = get_text('task_job_creation_error', context).format(error=str(e))
-        await query.edit_message_text(
-            error_msg,
-            reply_markup=back_to_constructor_keyboard(context)
-        )
+        logger.error(f"Error creating jobs for task {task_id}: {e}", exc_info=True)
         await update_task_field(task_id, 'status', 'inactive', context)
+        await query.edit_message_text(f"Error: {str(e)}", reply_markup=back_to_constructor_keyboard(context))
         return TASK_CONSTRUCTOR
 
-    # --- 3. Уведомление рекламодателя (если есть) ---
-    if task['advertiser_user_id']:
-        try:
-            task_name = task['task_name']
-            if not task_name:
-                task_name = get_text('task_default_name', context)
-
-            advertiser_settings = get_user_settings(task['advertiser_user_id'])
-            adv_lang = advertiser_settings.get('language_code', 'en') if advertiser_settings else 'en'
-
-            notify_text = get_text('task_advertiser_notify', context, lang=adv_lang).format(
-                task_name=task_name
-            )
-
-            await context.bot.send_message(
-                chat_id=task['advertiser_user_id'],
-                text=notify_text
-            )
-        except Exception as e:
-            logger.warning(f"Не удалось уведомить рекламодателя {task['advertiser_user_id']}: {e}")
-
-    # --- 4. Финальный экран успеха ---
+    # --- 3. Success UI ---
     success_text = get_text('task_activated_title', context).format(task_id=task_id) + "\n\n"
-    success_text += get_text('task_activated_jobs_count', context).format(job_count=job_count) + "\n"
-    success_text += get_text('task_activated_schedule_info', context)
+    success_text += get_text('task_activated_jobs_count', context).format(job_count=job_count)
 
-    await query.edit_message_text(
-        success_text,
-        reply_markup=back_to_main_menu_keyboard(context)
-    )
-
-    if 'current_task_id' in context.user_data:
-        del context.user_data['current_task_id']
+    await query.edit_message_text(success_text, reply_markup=back_to_main_menu_keyboard(context))
+    if 'current_task_id' in context.user_data: del context.user_data['current_task_id']
 
     return MAIN_MENU
 
@@ -6930,199 +7078,160 @@ async def execute_unpin_job(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Ошибка при откреплении {message_id}: {e}")
 
+def get_next_weekday(base: datetime, target_weekday: int) -> datetime:
+    """
+    base: datetime in UTC
+    target_weekday: Monday=0 ... Sunday=6
+    Returns next occurrence of that weekday (excluding today).
+    """
+    days_ahead = (target_weekday - base.weekday() + 7) % 7
+    if days_ahead == 0:
+        days_ahead = 7
+    return base + timedelta(days=days_ahead)
+
+def get_next_weekday_including_today(base: datetime, target_weekday: int) -> datetime:
+    """
+    base: datetime in UTC
+    target_weekday: Monday=0 ... Sunday=6
+
+    If the target weekday is today → return today.
+    Otherwise → find the next occurrence of the weekday.
+    """
+    days_ahead = (target_weekday - base.weekday()) % 7
+    return base + timedelta(days=days_ahead)
+
 
 async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
     """
     EXECUTOR (called by JobQueue)
-    Publishes the post (Single or Media Group).
-    UPDATED: Now notifies the Advertiser and handles logic for Pin notifications.
+    Publishes the post. Handles Media Groups, Single Messages, and Recursion.
     """
     bot = context.bot
     job_id = context.job.data.get('job_id')
 
+    # Fallback if job_id isn't in data
     if not job_id:
         try:
             job_id = int(context.job.name.replace('pub_', ''))
         except:
-            logger.error("Could not determine job_id")
+            logger.error("❌ Critical: Could not determine job_id in execute_publication_job")
             return
 
-    logger.info(f"Starting execute_publication_job for job_id: {job_id}")
+    logger.info(f"🚀 Executing publication job_id: {job_id}")
 
-    # Fetch Job info
-    job_data = db_query("SELECT * FROM publication_jobs WHERE id = %s AND status = 'scheduled'", (job_id,),
-                        fetchone=True)
+    # 1. Fetch Job info
+    job_data = db_query("""
+        SELECT * FROM publication_jobs 
+        WHERE id = %s AND status = 'scheduled'
+    """, (job_id,), fetchone=True)
 
     if not job_data:
-        logger.error(f"Job {job_id} not found in DB or already executed.")
+        logger.warning(f"Job {job_id} not found in DB or already processed.")
         return
 
-    # Fetch Task info (specifically for media group data)
-    task_data = db_query("SELECT media_group_data FROM tasks WHERE id = %s", (job_data['task_id'],), fetchone=True)
-    media_group_json = task_data.get('media_group_data')
+    # 2. Fetch Task info
+    task_data = db_query("SELECT * FROM tasks WHERE id = %s", (job_data['task_id'],), fetchone=True)
+    if not task_data:
+        return
 
-    user_id = job_data['user_id']
+    media_group_json = task_data.get('media_group_data')
     channel_id = job_data['channel_id']
     content_message_id = job_data['content_message_id']
     content_chat_id = job_data['content_chat_id']
-    auto_delete_hours = job_data['auto_delete_hours']
-    pin_duration = job_data['pin_duration']
-    advertiser_user_id = job_data['advertiser_user_id']  # Get advertiser ID
+
+    # Logic: If pin_notify is True -> We want Sound.
+    # Telegram API disable_notification: True = Silent, False = Loud.
+    # So disable_notification should be NOT pin_notify.
+    api_disable_notification = not job_data['pin_notify']
 
     posted_message_id = None
 
     try:
-        # --- SENDING LOGIC ---
+        # 3. PUBLISHING
         if media_group_json:
-            # === OPTION A: SEND MEDIA GROUP ===
-            media_data = media_group_json
-            if isinstance(media_data, str):
-                media_data = json.loads(media_data)
-
+            # === MEDIA GROUP ===
+            media_data = media_group_json if isinstance(media_group_json, dict) else json.loads(media_group_json)
             input_media = []
             caption_to_use = media_data.get('caption')
 
             for i, f in enumerate(media_data['files']):
                 media_obj = None
-
-                # Check file type and create the correct InputMedia object
                 if f['type'] == 'photo':
-                    media_obj = InputMediaPhoto(
-                        media=f['media'],
-                        caption=caption_to_use if i == 0 else None,
-                        has_spoiler=f.get('has_spoiler', False)
-                    )
+                    media_obj = InputMediaPhoto(media=f['media'], caption=caption_to_use if i == 0 else None,
+                                                has_spoiler=f.get('has_spoiler', False))
                 elif f['type'] == 'video':
-                    media_obj = InputMediaVideo(
-                        media=f['media'],
-                        caption=caption_to_use if i == 0 else None,
-                        has_spoiler=f.get('has_spoiler', False)
-                    )
-                # (Add Audio/Document handling if needed)
-
-                if media_obj:
-                    input_media.append(media_obj)
+                    media_obj = InputMediaVideo(media=f['media'], caption=caption_to_use if i == 0 else None,
+                                                has_spoiler=f.get('has_spoiler', False))
+                elif f['type'] == 'document':
+                    media_obj = InputMediaDocument(media=f['media'], caption=caption_to_use if i == 0 else None)
+                elif f['type'] == 'audio':
+                    media_obj = InputMediaAudio(media=f['media'], caption=caption_to_use if i == 0 else None)
+                if media_obj: input_media.append(media_obj)
 
             if input_media:
-                sent_messages = await bot.send_media_group(
-                    chat_id=channel_id,
-                    media=input_media,
-                    disable_notification=not job_data['pin_notify']
-                )
-                posted_message_id = sent_messages[0].message_id
-                logger.info(f"Media Group published in {channel_id}, first msg_id: {posted_message_id}")
-            else:
-                raise Exception("Media group data found but input list empty")
-
+                sent_msgs = await bot.send_media_group(chat_id=channel_id, media=input_media,
+                                                       disable_notification=api_disable_notification)
+                posted_message_id = sent_msgs[0].message_id
         else:
-            # === OPTION B: SEND SINGLE MESSAGE (Copy) ===
-            sent_message = await bot.copy_message(
+            # === SINGLE MESSAGE ===
+            sent_msg = await bot.copy_message(
                 chat_id=channel_id,
                 from_chat_id=content_chat_id,
                 message_id=content_message_id,
-                disable_notification=not job_data['pin_notify']
+                disable_notification=api_disable_notification
             )
-            posted_message_id = sent_message.message_id
-            logger.info(f"Single Job published in {channel_id}, msg_id: {posted_message_id}")
+            posted_message_id = sent_msg.message_id
 
-        # --- PREPARE DATA FOR NOTIFICATIONS ---
-        channel_title = str(channel_id)
-        task_name = f"#{job_data['task_id']}"
-        try:
-            channel_info = db_query("SELECT channel_title FROM channels WHERE channel_id = %s", (channel_id,),
-                                    fetchone=True)
-            if channel_info and channel_info.get('channel_title'):
-                channel_title = channel_info['channel_title']
+        logger.info(f"✅ Published successfully. Msg ID: {posted_message_id}")
 
-            task_info = db_query("SELECT task_name FROM tasks WHERE id = %s", (job_data['task_id'],), fetchone=True)
-            if task_info and task_info.get('task_name'):
-                task_name = task_info['task_name']
-        except Exception as e:
-            logger.warning(f"Error fetching metadata for notifications: {e}")
-
-        # --- NOTIFY USER (CREATOR) ---
-        try:
-            user_settings = get_user_settings(user_id)
-            lang = user_settings.get('language_code', 'en')
-
-            title_txt = get_text('notify_post_published_title', context, lang=lang)
-            channel_lbl = get_text('notify_post_published_channel', context, lang=lang)
-            task_lbl = get_text('notify_post_published_task', context, lang=lang)
-
-            notify_text = f"{title_txt}\n{channel_lbl} {channel_title}\n{task_lbl} {task_name}"
-            await bot.send_message(chat_id=user_id, text=notify_text, disable_notification=True)
-        except Exception as e:
-            logger.warning(f"Failed to notify user {user_id}: {e}")
-
-        # --- TASK 2: NOTIFY ADVERTISER ---
-        if advertiser_user_id and advertiser_user_id != user_id:
+        # 4. PINNING
+        if job_data['pin_duration'] > 0 and posted_message_id:
             try:
-                adv_settings = get_user_settings(advertiser_user_id)
-                adv_lang = adv_settings.get('language_code', 'en')
+                await bot.pin_chat_message(chat_id=channel_id, message_id=posted_message_id,
+                                           disable_notification=api_disable_notification)
 
-                adv_title = get_text('notify_post_published_title', context, lang=adv_lang)
-                adv_channel = get_text('notify_post_published_channel', context, lang=adv_lang)
-                adv_task = get_text('notify_post_published_task', context, lang=adv_lang)
-
-                adv_notify_text = f"{adv_title}\n{adv_channel} {channel_title}\n{adv_task} {task_name}"
-
-                # Send notification to advertiser
-                await bot.send_message(chat_id=advertiser_user_id, text=adv_notify_text, disable_notification=True)
-                logger.info(f"Advertiser {advertiser_user_id} notified for task {job_data['task_id']}")
-            except Exception as e:
-                logger.warning(f"Failed to notify advertiser {advertiser_user_id}: {e}")
-
-        # --- PINNING LOGIC ---
-        if pin_duration > 0 and posted_message_id:
-            try:
-                await bot.pin_chat_message(
-                    chat_id=channel_id,
-                    message_id=posted_message_id,
-                    disable_notification=not job_data['pin_notify']
-                )
-
-                # Note: The 'Message Pinned' service message is deleted by 'delete_pin_service_message' handler
-                unpin_time_utc = datetime.now(ZoneInfo('UTC')) + timedelta(hours=pin_duration)
-                unpin_job_name = f"unpin_{job_id}_msg_{posted_message_id}"
-
+                # Schedule Unpin
+                unpin_time = datetime.now(ZoneInfo('UTC')) + timedelta(hours=job_data['pin_duration'])
                 context.application.job_queue.run_once(
-                    execute_unpin_job,
-                    when=unpin_time_utc,
+                    execute_unpin_job, when=unpin_time,
                     data={'channel_id': channel_id, 'message_id': posted_message_id, 'job_id': job_id},
-                    name=unpin_job_name,
-                    job_kwargs={'misfire_grace_time': 600}
+                    name=f"unpin_{job_id}_{posted_message_id}"
                 )
-            except TelegramError as e:
-                logger.error(f"Error pinning job {job_id}: {e}")
+            except Exception as e:
+                logger.error(f"Pinning failed: {e}")
 
-        # --- AUTO DELETE LOGIC ---
-        if auto_delete_hours > 0 and posted_message_id:
-            delete_time_utc = datetime.now(ZoneInfo('UTC')) + timedelta(hours=auto_delete_hours)
-            delete_job_name = f"del_{job_id}_msg_{posted_message_id}"
-
+        # 5. AUTO DELETE
+        if job_data['auto_delete_hours'] > 0 and posted_message_id:
+            del_time = datetime.now(ZoneInfo('UTC')) + timedelta(hours=job_data['auto_delete_hours'])
             context.application.job_queue.run_once(
-                execute_delete_job,
-                when=delete_time_utc,
+                execute_delete_job, when=del_time,
                 data={'channel_id': channel_id, 'message_id': posted_message_id, 'job_id': job_id},
-                name=delete_job_name,
-                job_kwargs={'misfire_grace_time': 600}
+                name=f"del_{job_id}_{posted_message_id}"
             )
 
-        # Update Status to 'published'
+        # 6. UPDATE STATUS
         db_query("""
             UPDATE publication_jobs
             SET status = 'published', published_at = NOW(), posted_message_id = %s
             WHERE id = %s
         """, (posted_message_id, job_id), commit=True)
 
-    except Forbidden as e:
-        logger.error(f"Forbidden: Could not execute job {job_id} in {channel_id}: {e}")
-        db_query("UPDATE publication_jobs SET status = 'failed' WHERE id = %s", (job_id,), commit=True)
+        # 7. SCHEDULE NEXT RECURRENCE (For Weekdays)
+        schedules = get_task_schedules(task_data['id'])
+        this_run_time_utc = job_data['scheduled_time_utc'].replace(tzinfo=ZoneInfo('UTC'))
+
+        for schedule in schedules:
+            weekday = schedule['schedule_weekday']
+            if weekday is not None:
+                # Calculate exactly 7 days from THIS successful run time
+                # or find next weekday logic
+                next_run_utc = this_run_time_utc + timedelta(days=7)
+                logger.info(f"🔄 Rescheduling recurring task for {next_run_utc}")
+                _create_single_publication_job(task_data, channel_id, next_run_utc, context.application)
 
     except Exception as e:
-        logger.error(f"Critical error executing job {job_id}: {e}", exc_info=True)
+        logger.error(f"❌ Execution failed for job {job_id}: {e}", exc_info=True)
         db_query("UPDATE publication_jobs SET status = 'failed' WHERE id = %s", (job_id,), commit=True)
-
 
 # --- 6. Логика платежей (Stars) ---
 
@@ -7612,6 +7721,11 @@ def main():
         # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
         TASK_SET_CUSTOM_TIME: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, time_receive_custom),
+
+            # --- FIX: Handler for the Back button ---
+            CallbackQueryHandler(task_select_time, pattern="^task_select_time$"),
+            # ----------------------------------------
+
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
         ],
@@ -7672,12 +7786,12 @@ def main():
         allow_reentry=True
     )
 
-    application.add_handler(
-        MessageHandler(filters.StatusUpdate.PINNED_MESSAGE, delete_pin_service_message),
-        group=0
-    )
+    # application.add_handler(
+    #     MessageHandler(filters.StatusUpdate.PINNED_MESSAGE, delete_pin_service_message),
+    #     group=0
+    # )
 
-    application.add_handler(conv_handler, group=1)
+    application.add_handler(conv_handler)
     application.add_handler(CommandHandler("jobs", debug_jobs))
 
     # --- НОВЫЕ ОБРАБОТЧИКИ ПЛАТЕЖЕЙ ---
@@ -7695,7 +7809,6 @@ def main():
     logger.info("Бот запускается...")
     logger.info(f"Owner ID: {OWNER_ID}")
 
-    # Schedule daily cleanup of inactive tasks (runs at 00:00 UTC daily)
     scheduler.add_job(
         cleanup_inactive_tasks,
         CronTrigger(hour=0, minute=0, timezone='UTC'),
@@ -7703,7 +7816,18 @@ def main():
         name='Daily cleanup of inactive tasks older than 60 days',
         replace_existing=True
     )
+
+    # NEW: Schedule daily cleanup of past dates
+    scheduler.add_job(
+        cleanup_past_schedules,
+        CronTrigger(hour=0, minute=5, timezone='UTC'),  # Run 5 minutes after midnight
+        id='cleanup_past_schedules',
+        name='Daily cleanup of past schedule dates',
+        replace_existing=True
+    )
+
     scheduler.start()
+
     logger.info("✅ Scheduled daily cleanup job for inactive tasks")
 
     # Then start receiving updates
