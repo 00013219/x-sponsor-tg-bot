@@ -31,7 +31,6 @@ from psycopg2.pool import SimpleConnectionPool
 from psycopg2 import errorcodes
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from text import TEXTS
 
 load_dotenv()
 
