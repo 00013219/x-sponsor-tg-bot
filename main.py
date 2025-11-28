@@ -4237,19 +4237,17 @@ async def calendar_weekday_select(update: Update, context: ContextTypes.DEFAULT_
     If a weekday is picked, ALL specific dates are removed.
     """
     query = update.callback_query
-    # We do NOT answer immediately here, let task_select_calendar handle it or do it at the end
 
-    user_id = query.from_user.id
-    task_id = get_or_create_task_id(user_id, context)
-
+    task_id = context.user_data.get('current_task_id')
     # Task 3: Validation
     can_modify, error_msg = can_modify_task_parameter(task_id)
     if not can_modify:
         await query.answer(
             get_text('task_error_no_name_or_message', context),
-            show_alert=True
+            show_alert=False
         )
-        return CALENDAR_VIEW
+        return TASK_CONSTRUCTOR
+    await query.answer()
 
     try:
         weekday = int(query.data.replace("calendar_wd_", ""))
