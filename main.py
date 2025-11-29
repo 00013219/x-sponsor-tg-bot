@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any, List
 import re
 import calendar
 from enum import Enum
-from asyncio import sleep
+import asyncio
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, ReplyKeyboardMarkup, KeyboardButton, \
     InputMediaPhoto, InputMediaVideo, InputMediaAudio, InputMediaDocument
@@ -22,7 +22,7 @@ from telegram.ext import (
     ChatMemberHandler,
     ConversationHandler, PreCheckoutQueryHandler,
 )
-from telegram.error import TelegramError, Forbidden
+from telegram.error import TelegramError, Forbidden, BadRequest
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.cron import CronTrigger
@@ -32,7 +32,6 @@ from psycopg2.pool import SimpleConnectionPool
 from psycopg2 import errorcodes
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
 
 load_dotenv()
 
@@ -3514,33 +3513,81 @@ def boss_panel_keyboard(context: ContextTypes.DEFAULT_TYPE):
 
 # --- Хелперы ConversationHandler ---
 
-async def send_or_edit_message(update: Update, text: str, reply_markup: InlineKeyboardMarkup):
+async def send_or_edit_message(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str,
+                               reply_markup: InlineKeyboardMarkup, cleanup_previous: bool = True):
     """
     Отправляет новое или редактирует существующее сообщение.
-    Robust version: Если редактирование невозможно (сообщение удалено или другого типа), отправляет новое.
+    Enhanced: Better error handling when messages are already deleted.
     """
     query = update.callback_query
-    if query and query.message:
-        try:
-            await query.edit_message_text(text, reply_markup=reply_markup)
-        except TelegramError as e:
-            # Если "Message is not modified" - это не ошибка, игнорируем.
-            if "Message is not modified" in str(e):
-                await query.answer()
-                return
+    chat_id = None
+    user_data = context.user_data
 
-            # Если сообщение не найдено (удалено) или нельзя отредактировать (например, было фото),
-            # отправляем новое сообщение.
+    # Get chat_id
+    if query and query.message:
+        chat_id = query.message.chat_id
+    elif update.message:
+        chat_id = update.message.chat_id
+
+    # Cleanup previous bot message if requested
+    if cleanup_previous and chat_id and 'last_bot_message_id' in user_data:
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=user_data['last_bot_message_id'])
+        except Exception as e:
+            # Message might already be deleted, ignore
+            pass
+
+    try:
+        if query and query.message:
+            # Try to edit existing message
+            try:
+                await query.edit_message_text(text, reply_markup=reply_markup)
+                if cleanup_previous:
+                    user_data['last_bot_message_id'] = query.message.message_id
+                return
+            except BadRequest as e:
+                if "Message to edit not found" in str(e) or "Message is not modified" in str(e):
+                    # Message was deleted or is the same, send new one
+                    raise TelegramError("Message not found for editing")
+                else:
+                    raise e
+        else:
+            # This path is for when there's no query (message-based update)
+            raise TelegramError("No query message to edit")
+
+    except TelegramError as e:
+        # Если "Message is not modified" или "Message to edit not found" - отправляем новое сообщение
+        if "Message is not modified" in str(e) or "Message not found" in str(e) or "Message to edit not found" in str(
+                e):
+            # Send new message instead
+            try:
+                if update.message:
+                    msg = await update.message.reply_text(text, reply_markup=reply_markup)
+                else:
+                    msg = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
+
+                if cleanup_previous and msg:
+                    user_data['last_bot_message_id'] = msg.message_id
+
+            except Exception as send_e:
+                logger.error(f"Failed to send fallback message: {send_e}")
+        else:
+            # Other Telegram errors
             logger.warning(f"Edit failed ({e}), sending new message instead.")
             try:
-                # Используем effective_chat, так как query.message может быть уже неактуален
-                await update.effective_chat.send_message(text, reply_markup=reply_markup)
+                if update.message:
+                    msg = await update.message.reply_text(text, reply_markup=reply_markup)
+                else:
+                    msg = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
+
+                if cleanup_previous and msg:
+                    user_data['last_bot_message_id'] = msg.message_id
+
             except Exception as send_e:
                 logger.error(f"Failed to send fallback message: {send_e}")
 
-            await query.answer()
-    elif update.message:
-        await update.message.reply_text(text, reply_markup=reply_markup)
+    if query:
+        await query.answer()
 
 
 async def load_user_settings(user_id: int, context: ContextTypes.DEFAULT_TYPE):
@@ -3592,41 +3639,39 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = None
 
     if query:
-        # Если мы пришли из callback (напр. кнопка "Назад"),
-        # удаляем старое сообщение, чтобы меню не дублировались.
-        try:
-            await query.delete_message()
-        except Exception as e:
-            logger.warning(f"Не удалось удалить сообщение в show_main_menu: {e}")
-
+        # Cleanup when coming from callback - the callback message should already be deleted by nav_main_menu
         chat_id = query.message.chat_id
-
     elif update.message:
         chat_id = update.message.chat_id
-
     else:
-        # На случай, если не удалось определить chat_id (например, при /start)
         chat_id = update.effective_chat.id
 
     if not chat_id:
         logger.error("Не удалось определить chat_id в show_main_menu")
         return MAIN_MENU
 
+    # Cleanup any remaining temporary messages
+    await cleanup_temp_messages(context, chat_id)
+
     # 1. Отправляем Inline-меню
-    await context.bot.send_message(
+    msg = await context.bot.send_message(
         chat_id=chat_id,
         text=text,
         reply_markup=main_menu_keyboard(context)
     )
 
-    # 2. Отправляем Reply-клавиатуру (кнопки внизу)
+    # Store this message ID for future cleanup
+    context.user_data['temp_message_ids'] = [msg.message_id]
+
+    # 2. Отправляем Reply-клавиатуру (this one we generally don't delete as it's persistent)
     await context.bot.send_message(
         chat_id=chat_id,
-        text=get_text('reply_keyboard_prompt', context),  # <-- ИСПРАВЛЕНО
-        reply_markup=main_menu_reply_keyboard(context)  # <-- Теперь кнопки на нужном языке
+        text=get_text('reply_keyboard_prompt', context),
+        reply_markup=main_menu_reply_keyboard(context)
     )
 
     return MAIN_MENU
+
 
 
 async def handle_reply_keyboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3727,19 +3772,23 @@ async def start_select_timezone(update: Update, context: ContextTypes.DEFAULT_TY
 # --- 2. Главное меню и Навигация ---
 
 async def nav_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Коллбэк 'nav_main_menu'. Возвращает в Главное меню."""
+    """Коллбэк 'nav_main_menu'. Возвращает в Главное меню с proper cleanup."""
     query = update.callback_query
     if query:
         await query.answer()
 
-    # Удаляем временное скопированное сообщение из чата (если оно есть)
-    temp_msg_id = context.user_data.get('temp_task_message_id')
-    if temp_msg_id and query:
+    # Comprehensive cleanup of ALL previous messages
+    chat_id = update.effective_chat.id
+
+    # Cleanup all temporary messages
+    await cleanup_temp_messages(context, chat_id)
+
+    # Also delete the current message that triggered this callback
+    if query and query.message:
         try:
-            await context.bot.delete_message(chat_id=query.message.chat_id, message_id=temp_msg_id)
+            await query.delete_message()
         except Exception as e:
-            logger.warning(f"Не удалось удалить временное сообщение {temp_msg_id}: {e}")
-        context.user_data.pop('temp_task_message_id', None)
+            logger.warning(f"Не удалось удалить текущее сообщение: {e}")
 
     if 'current_task_id' in context.user_data:
         del context.user_data['current_task_id']
@@ -3754,16 +3803,19 @@ async def nav_my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         message = query.message
 
-        # Удаляем временное скопированное сообщение из чата (если оно есть)
-        temp_msg_id = context.user_data.get('temp_task_message_id')
-        if temp_msg_id:
-            try:
-                await context.bot.delete_message(chat_id=query.message.chat_id, message_id=temp_msg_id)
-            except Exception as e:
-                logger.warning(f"Не удалось удалить временное сообщение {temp_msg_id}: {e}")
-            context.user_data.pop('temp_task_message_id', None)
+        # Cleanup previous menu messages
+        await cleanup_temp_messages(context, query.message.chat_id)
+
+        # Also cleanup the main menu message that called this
+        try:
+            await query.delete_message()
+        except Exception as e:
+            logger.warning(f"Не удалось удалить меню сообщение: {e}")
     else:
         message = update.message
+        # Cleanup for message-based navigation
+        if update.message:
+            await cleanup_temp_messages(context, update.message.chat_id)
 
     user_id = context.user_data['user_id']
     tasks = get_user_tasks(user_id)
@@ -3778,12 +3830,8 @@ async def nav_my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not tasks:
         list_text = get_text('my_tasks_empty', context)
     else:
-        # Сортируем: сначала Активные, потом Завершающиеся, потом Неактивные
-
         for task in tasks:
-            # --- FIX IS HERE: Removed the second argument ---
             icon = determine_task_status_color(task['id'])
-            # ------------------------------------------------
 
             # Определяем текстовый статус для списка
             if icon == '🟢':
@@ -3794,7 +3842,6 @@ async def nav_my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 status_txt = get_text('status_text_inactive', context)
 
             # Формируем строку списка
-            # Название - первые 4 слова (используем хелпер)
             smart_name = generate_smart_name(task['task_name'] or "", context, limit=4)
 
             item_str = get_text('my_tasks_item_template', context).format(
@@ -3838,11 +3885,13 @@ async def nav_my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard.append([InlineKeyboardButton(get_text('back_to_main_menu_btn', context), callback_data="nav_main_menu")])
 
-    # Используем edit_message_text если возможно, иначе send
-    try:
-        await message.edit_message_text(full_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-    except Exception:
-        await message.reply_text(full_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    # Send new message and store its ID for cleanup
+    msg = await message.reply_text(full_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+    # Store this message ID for future cleanup
+    if 'temp_message_ids' not in context.user_data:
+        context.user_data['temp_message_ids'] = []
+    context.user_data['temp_message_ids'].append(msg.message_id)
 
     return MY_TASKS
 
@@ -4569,7 +4618,7 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
 async def show_task_constructor(update: Update, context: ContextTypes.DEFAULT_TYPE, force_new_message: bool = False):
     """
     Показывает главный экран конструктора задач.
-    Added force_new_message: для принудительной отправки нового сообщения (например, после удаления превью).
+    Enhanced: Properly cleans up ALL previous messages including media groups.
     """
     chat_id = None
     if update.callback_query:
@@ -4578,31 +4627,19 @@ async def show_task_constructor(update: Update, context: ContextTypes.DEFAULT_TY
         chat_id = update.message.chat_id
 
     if chat_id:
-        # Cleanup PREVIEW message
-        temp_msg_id = context.user_data.get('temp_task_message_id')
-        if temp_msg_id:
-            try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=temp_msg_id)
-            except Exception:
-                pass
-            context.user_data.pop('temp_task_message_id', None)
-
-        # Cleanup PROMPT message
-        temp_prompt_id = context.user_data.get('temp_prompt_message_id')
-        if temp_prompt_id:
-            try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=temp_prompt_id)
-            except Exception:
-                pass
-            context.user_data.pop('temp_prompt_message_id', None)
+        # Cleanup ALL temporary messages including media groups
+        await cleanup_temp_messages(context, chat_id)
 
     text = get_task_constructor_text(context)
 
-    # Если запрошено новое сообщение или у нас нет query для редактирования
+    # If we need to force a new message or there's no query to edit, send new message
     if force_new_message and chat_id:
-        await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=task_constructor_keyboard(context))
+        msg = await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=task_constructor_keyboard(context))
+        # Store this new message for future cleanup
+        context.user_data['temp_message_ids'] = [msg.message_id]
     else:
-        await send_or_edit_message(update, text, task_constructor_keyboard(context))
+        # Try to edit existing message
+        await send_or_edit_message(update, context, text, task_constructor_keyboard(context))
 
     return TASK_CONSTRUCTOR
 
@@ -4683,16 +4720,29 @@ async def task_edit_entrypoint(update: Update, context: ContextTypes.DEFAULT_TYP
     task_id = int(query.data.replace("task_edit_", ""))
     context.user_data['current_task_id'] = task_id
 
-    return await show_task_constructor(update, context)
+    # Cleanup any existing messages before showing constructor
+    if query and query.message:
+        await cleanup_temp_messages(context, query.message.chat_id)
+
+    return await show_task_constructor(update, context, force_new_message=True)
 
 
 async def task_back_to_constructor(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Кнопка '⬅️ Назад' (возврат в конструктор)"""
+    """Кнопка '⬅️ Назад' (возврат в конструктор) с полной очисткой"""
     query = update.callback_query
     await query.answer()
 
-    # Мы возвращаемся с экрана (превью), который удаляется внутри show_task_constructor (cleanup).
-    # Поэтому мы должны принудительно отправить новое сообщение, так как старое (кнопка Назад) исчезнет.
+    # Cleanup ALL temporary messages before showing constructor
+    if query and query.message:
+        await cleanup_temp_messages(context, query.message.chat_id)
+
+    # Also delete the current message that has the back button
+    try:
+        await query.delete_message()
+    except Exception as e:
+        logger.warning(f"Не удалось удалить текущее сообщение: {e}")
+
+    # We return to constructor which will send a new clean message
     return await show_task_constructor(update, context, force_new_message=True)
 
 
@@ -4711,7 +4761,7 @@ async def task_ask_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def task_receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Updates name and triggers hot-reload if active"""
+    """Updates name and triggers hot-reload if active, with proper cleanup"""
     user_id = update.message.from_user.id
     task_id = get_or_create_task_id(user_id, context)
 
@@ -4721,10 +4771,20 @@ async def task_receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     task_name = update.message.text.strip()
 
+    # Delete user's input message
+    try:
+        await update.message.delete()
+    except Exception as e:
+        logger.warning(f"Не удалось удалить сообщение пользователя: {e}")
+
     # This triggers the Hot Reload via update_task_field -> refresh_task_jobs
     await update_task_field(task_id, 'task_name', task_name, context)
 
-    await update.message.reply_text(get_text('task_name_saved', context))
+    # Send temporary confirmation
+    msg = await update.message.reply_text(get_text('task_name_saved', context))
+    # Auto-delete confirmation after 2 seconds
+    asyncio.create_task(delete_message_after_delay(context, update.message.chat_id, msg.message_id, 2))
+
     return await show_task_constructor(update, context)
 
 
@@ -4737,33 +4797,19 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     task_id = context.user_data.get('current_task_id')
     task = get_task_details(task_id)
 
-    # Cleanup previous temp message if any
-    previous_msg_id = context.user_data.get('temp_task_message_id')
-    if previous_msg_id:
-        try:
-            await context.bot.delete_message(chat_id=query.message.chat_id, message_id=previous_msg_id)
-        except Exception:
-            pass
-        context.user_data.pop('temp_task_message_id', None)
-
-    # Cleanup previous prompt message if any
-    previous_prompt_id = context.user_data.get('temp_prompt_message_id')
-    if previous_prompt_id:
-        try:
-            await context.bot.delete_message(chat_id=query.message.chat_id, message_id=previous_prompt_id)
-        except Exception:
-            pass
-        context.user_data.pop('temp_prompt_message_id', None)
+    # Cleanup previous temp messages if any
+    if query and query.message:
+        await cleanup_temp_messages(context, query.message.chat_id)
 
     if task and task['content_message_id']:
         # --- EDIT MODE ---
         text = get_text('task_message_current_prompt', context)
 
-        # 1. Edit the prompt message (remove buttons from here)
-        await query.delete_message()
-
-        # Save ID of the prompt message to delete it later on "Back"
-        context.user_data['temp_prompt_message_id'] = query.message.message_id
+        # 1. Delete the current message and send new ones instead of editing
+        try:
+            await query.delete_message()
+        except Exception:
+            pass
 
         # 2. Define Keyboard for the PREVIEW (Delete & Back)
         keyboard = [
@@ -4805,7 +4851,17 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 # Send the album
                 if input_media:
-                    await context.bot.send_media_group(chat_id=query.message.chat_id, media=input_media)
+                    sent_messages = await context.bot.send_media_group(
+                        chat_id=query.message.chat_id,
+                        media=input_media
+                    )
+
+                    # Store ALL media group message IDs for cleanup
+                    if 'temp_message_ids' not in context.user_data:
+                        context.user_data['temp_message_ids'] = []
+
+                    for msg in sent_messages:
+                        context.user_data['temp_message_ids'].append(msg.message_id)
 
                 # Send separate message for buttons (Albums can't have buttons)
                 control_msg = await context.bot.send_message(
@@ -4814,12 +4870,21 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
 
-                # Save control message ID for cleanup
-                context.user_data['temp_task_message_id'] = control_msg.message_id
+                # Store control message ID for cleanup
+                if 'temp_message_ids' not in context.user_data:
+                    context.user_data['temp_message_ids'] = []
+                context.user_data['temp_message_ids'].append(control_msg.message_id)
 
             except Exception as e:
                 logger.error(f"Failed to preview media group: {e}")
-                await query.message.reply_text("⚠️ Error displaying full album preview.")
+                # Fallback: send error message that will be cleaned up later
+                error_msg = await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text="⚠️ Error displaying full album preview."
+                )
+                if 'temp_message_ids' not in context.user_data:
+                    context.user_data['temp_message_ids'] = []
+                context.user_data['temp_message_ids'].append(error_msg.message_id)
 
         else:
             # === SHOWING SINGLE MESSAGE ===
@@ -4831,24 +4896,78 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     message_id=task['content_message_id'],
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
-                # Save ID of preview message
-                context.user_data['temp_task_message_id'] = copied_message.message_id
+                # Store single message ID for cleanup
+                if 'temp_message_ids' not in context.user_data:
+                    context.user_data['temp_message_ids'] = []
+                context.user_data['temp_message_ids'].append(copied_message.message_id)
 
             except Exception as e:
                 logger.warning(f"Не удалось скопировать старое сообщение для task {task_id}: {e}")
-                await query.message.reply_text(get_text('task_message_display_error', context))
+                error_msg = await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=get_text('task_message_display_error', context)
+                )
+                if 'temp_message_ids' not in context.user_data:
+                    context.user_data['temp_message_ids'] = []
+                context.user_data['temp_message_ids'].append(error_msg.message_id)
 
         return TASK_SET_MESSAGE
 
     else:
         # --- ASK MODE ---
         text = get_text('task_ask_message', context)
-        await query.edit_message_text(
-            text,
+
+        # Delete the current message and send a new one instead of editing
+        try:
+            await query.delete_message()
+        except Exception as e:
+            logger.warning(f"Не удалось удалить сообщение: {e}")
+
+        # Send new message and store its ID for cleanup
+        msg = await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=text,
             reply_markup=back_to_constructor_keyboard(context)
         )
+
+        # Store this message ID for cleanup
+        if 'temp_message_ids' not in context.user_data:
+            context.user_data['temp_message_ids'] = []
+        context.user_data['temp_message_ids'].append(msg.message_id)
+
         return TASK_SET_MESSAGE
 
+
+async def cleanup_temp_messages(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
+    """Clean up all temporary messages from user_data with better error handling"""
+    if not chat_id:
+        return
+
+    temp_message_ids = context.user_data.get('temp_message_ids', [])
+
+    # Delete all tracked temporary messages (newest first to avoid gaps)
+    for message_id in sorted(temp_message_ids, reverse=True):
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+            logger.debug(f"✅ Deleted temp message {message_id}")
+        except Exception as e:
+            # Message might already be deleted, ignore
+            logger.debug(f"Message {message_id} already deleted or not found: {e}")
+
+    # Clear the stored message IDs
+    context.user_data.pop('temp_message_ids', None)
+
+    # Also cleanup old individual message IDs for backward compatibility
+    old_keys = ['temp_task_message_id', 'temp_prompt_message_id', 'last_bot_message_id']
+    for key in old_keys:
+        message_id = context.user_data.get(key)
+        if message_id:
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+                logger.debug(f"✅ Deleted old temp message {message_id} from key {key}")
+            except Exception as e:
+                logger.debug(f"Old message {message_id} already deleted: {e}")
+            context.user_data.pop(key, None)
 
 async def task_delete_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """(Конструктор) Удаление сохраненного сообщения"""
@@ -4860,24 +4979,32 @@ async def task_delete_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_text(get_text('error_generic', context))
         return await show_task_constructor(update, context)
 
+    # Cleanup current preview messages
+    if query and query.message:
+        await cleanup_temp_messages(context, query.message.chat_id)
+
     # Обнуляем данные в БД
     await update_task_field(task_id, 'content_message_id', None, context)
     await update_task_field(task_id, 'content_chat_id', None, context)
-    db_query("UPDATE tasks SET message_snippet = NULL WHERE id = %s", (task_id,), commit=True)
+    db_query("UPDATE tasks SET message_snippet = NULL, media_group_data = NULL WHERE id = %s", (task_id,), commit=True)
 
     await query.answer(get_text('task_message_deleted_alert', context), show_alert=True)
 
-    # Возвращаемся в конструктор.
-    # Так как show_task_constructor выполнит cleanup и удалит превью, нужно отправить новое сообщение.
+    # Возвращаемся в конструктор - it will cleanup and send new message
     return await show_task_constructor(update, context, force_new_message=True)
 
 
 async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handles receiving a message (or media group) for the task.
+    Enhanced: Properly initializes temp_message_ids tracking.
     """
     user_id = update.message.from_user.id
     chat_id = update.effective_chat.id
+
+    # Initialize temp_message_ids if not exists
+    if 'temp_message_ids' not in context.user_data:
+        context.user_data['temp_message_ids'] = []
 
     # Check if this message is part of a media group
     if update.message.media_group_id:
@@ -4894,24 +5021,22 @@ async def task_receive_message(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['media_group_buffer'][media_group_id].append(update.message)
 
         # Schedule the processing job (debounce)
-        # We use a unique job name based on media_group_id to prevent duplicates
         job_name = f"process_mg_{media_group_id}"
         existing_jobs = context.job_queue.get_jobs_by_name(job_name)
 
         if not existing_jobs:
             # Schedule execution in 2 seconds
-            # IMPORTANT: We MUST pass user_id and chat_id here so context.user_data is available in the job
             context.job_queue.run_once(
                 process_media_group,
                 when=2,
                 data={'media_group_id': media_group_id},
                 name=job_name,
-                user_id=user_id,  # <--- FIX: Enables context.user_data in callback
-                chat_id=chat_id  # <--- FIX: Enables context.chat_data in callback
+                user_id=user_id,
+                chat_id=chat_id
             )
         return TASK_SET_MESSAGE
 
-    # --- Standard Single Message Logic (Existing) ---
+    # --- Standard Single Message Logic ---
     return await save_single_task_message(update, context)
 
 
@@ -4985,7 +5110,7 @@ async def save_single_task_message(update: Update, context: ContextTypes.DEFAULT
 async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
     """
     Job that runs after a short delay to process a buffered media group.
-    Includes logic to auto-detect if the album is a Forward or Direct Upload.
+    Enhanced: Properly tracks all messages for cleanup.
     """
     job = context.job
     job_data = job.data
@@ -4998,6 +5123,10 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
     if not context.user_data:
         logger.error(f"context.user_data is None for job {job.name}. Ensure user_id was passed to run_once.")
         return
+
+    # Initialize temp_message_ids if not exists
+    if 'temp_message_ids' not in context.user_data:
+        context.user_data['temp_message_ids'] = []
 
     # Retrieve messages from buffer
     buffer = context.user_data.get('media_group_buffer', {})
@@ -5070,24 +5199,16 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
         new_name = snippet[:200]
         await update_task_field(task_id, 'task_name', new_name, context)
 
-    # --- 🚀 NEW LOGIC: Auto-detect Post Type (Forward vs Direct) ---
-    # We check the first message in the sorted list.
+    # Auto-detect Post Type
     first_msg = messages[0]
-
-    # Check for forward_date (standard) or forward_origin (new API)
     is_forward = (first_msg.forward_date is not None) or \
                  (hasattr(first_msg, 'forward_origin') and first_msg.forward_origin is not None)
-
     new_post_type = 'repost' if is_forward else 'from_bot'
-
-    # Update the post_type field in the database
     await update_task_field(task_id, 'post_type', new_post_type, context)
-    # -----------------------------------------------------------------
 
     # Save to DB
     first_msg_id = messages[0].message_id
     chat_id = messages[0].chat_id
-
     json_data = json.dumps(media_group_data)
 
     await update_task_field(task_id, 'content_message_id', first_msg_id, context)
@@ -5099,22 +5220,27 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
         commit=True
     )
 
-    # Trigger UI update
+    # Trigger UI update - this will now properly track all messages
     await send_task_preview(user_id, task_id, context, is_group=True, media_data=media_group_data)
 
 
 async def send_task_preview(user_id, task_id, context, is_group=False, media_data=None):
-    """Helper to send the saved confirmation and preview"""
+    """Helper to send the saved confirmation and preview with proper tracking"""
+
+    # Initialize temp_message_ids if not exists
+    if 'temp_message_ids' not in context.user_data:
+        context.user_data['temp_message_ids'] = []
 
     # Send PREVIEW
     if is_group and media_data:
         try:
+            # Parse JSON if it's a string
+            media_data = media_data if isinstance(media_data, dict) else json.loads(media_data)
             input_media = []
             caption_to_use = media_data.get('caption', '')
 
             for i, f in enumerate(media_data['files']):
-                media = None
-
+                media_obj = None
                 # Determine InputMedia class based on file type
                 media_class = None
                 if f['type'] == 'photo':
@@ -5122,9 +5248,9 @@ async def send_task_preview(user_id, task_id, context, is_group=False, media_dat
                 elif f['type'] == 'video':
                     media_class = InputMediaVideo
                 elif f['type'] == 'document':
-                    media_class = InputMediaDocument  # <--- Use InputMediaDocument
+                    media_class = InputMediaDocument
                 elif f['type'] == 'audio':
-                    media_class = InputMediaAudio  # <--- Use InputMediaAudio
+                    media_class = InputMediaAudio
 
                 if media_class:
                     kwargs = {'media': f['media']}
@@ -5140,46 +5266,35 @@ async def send_task_preview(user_id, task_id, context, is_group=False, media_dat
                     media = media_class(**kwargs)
                     input_media.append(media)
 
-            # --- FIX: Handle non-standard media groups ---
-            # If the group contains mixed types (e.g., photo/video mixed with document/audio)
-            # send_media_group will fail. We must split it or handle it carefully.
-            # Telegram Bot API generally only allows photo/video groups.
-            # For simplicity in preview, we use the first message ID as a fallback if the group fails.
-
             if input_media:
                 try:
-                    msgs = await context.bot.send_media_group(chat_id=user_id, media=input_media)
-                    # Save ID of first message for deletion logic later
-                    context.user_data['temp_task_message_id'] = msgs[0].message_id
+                    sent_msgs = await context.bot.send_media_group(chat_id=user_id, media=input_media)
+                    # Store ALL media group message IDs for cleanup
+                    for msg in sent_msgs:
+                        context.user_data['temp_message_ids'].append(msg.message_id)
                 except TelegramError as te:
-                    # If send_media_group fails (often due to mixed types), fall back to copying the first message
-                    logger.warning(f"send_media_group failed (likely mixed types): {te}. Falling back to copy_message.")
-
-                    # Fallback: Copy the original first message in the group
-                    if media_data['files']:
-                        first_file_id = media_data['files'][0]['media']
-
-                        # Note: We need the original message_id, which we saved in task_message_id
-                        task = get_task_details(task_id)
-
+                    # Fallback to copying the original first message
+                    logger.warning(f"send_media_group failed: {te}. Falling back to copy_message.")
+                    task = get_task_details(task_id)
+                    if task and task['content_message_id']:
                         fallback_msg = await context.bot.copy_message(
                             chat_id=user_id,
                             from_chat_id=task['content_chat_id'],
                             message_id=task['content_message_id']
                         )
-                        context.user_data['temp_task_message_id'] = fallback_msg.message_id
-                    else:
-                        raise te  # Re-raise if no files found
-
+                        context.user_data['temp_message_ids'].append(fallback_msg.message_id)
             else:
-                await context.bot.send_message(chat_id=user_id,
-                                               text="⚠️ Error: Could not compile media group for preview.")
+                error_msg = await context.bot.send_message(chat_id=user_id,
+                                                           text="⚠️ Error: Could not compile media group for preview.")
+                context.user_data['temp_message_ids'].append(error_msg.message_id)
 
         except Exception as e:
             logger.error(f"Group preview failed: {e}")
-            await context.bot.send_message(chat_id=user_id, text="⚠️ Critical error generating group preview.")
+            error_msg = await context.bot.send_message(chat_id=user_id,
+                                                       text="⚠️ Critical error generating group preview.")
+            context.user_data['temp_message_ids'].append(error_msg.message_id)
     else:
-        # Standard Single Message Preview (Existing logic)
+        # Standard Single Message Preview
         task = get_task_details(task_id)
         try:
             preview_msg = await context.bot.copy_message(
@@ -5187,24 +5302,28 @@ async def send_task_preview(user_id, task_id, context, is_group=False, media_dat
                 from_chat_id=task['content_chat_id'],
                 message_id=task['content_message_id']
             )
-            context.user_data['temp_task_message_id'] = preview_msg.message_id
+            context.user_data['temp_message_ids'].append(preview_msg.message_id)
         except Exception as e:
             logger.error(f"Preview failed: {e}")
+            error_msg = await context.bot.send_message(chat_id=user_id, text="⚠️ Error displaying message preview.")
+            context.user_data['temp_message_ids'].append(error_msg.message_id)
 
     success_text = get_text('task_message_saved', context)
-
-    # Footer
     footer_text = get_text('task_message_preview_footer', context)
     keyboard = [
         [InlineKeyboardButton(get_text('task_delete_message_btn', context), callback_data="task_delete_message")],
         [InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor")]
     ]
 
-    await context.bot.send_message(
+    # Send confirmation message and track it
+    confirmation_msg = await context.bot.send_message(
         chat_id=user_id,
         text=f"{success_text}\n\n{footer_text}",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
+    # Track the confirmation message as well
+    context.user_data['temp_message_ids'].append(confirmation_msg.message_id)
 
 
 # --- Выбор Каналов ---
@@ -5992,12 +6111,22 @@ async def time_custom(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(text, reply_markup=keyboard)
     return TASK_SET_CUSTOM_TIME
 
+async def delete_message_after_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int, delay_seconds: int):
+    """Utility function to delete a message after a delay"""
+    await asyncio.sleep(delay_seconds)
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception as e:
+        # Message might already be deleted, ignore
+        pass
 
 
 async def time_receive_custom(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Получение своего времени с проверкой лимитов"""
+    """Получение своего времени с проверкой лимитов и чистый переход UI."""
+
     user_id = update.message.from_user.id
     task_id = get_or_create_task_id(user_id, context)
+    chat_id = update.effective_chat.id
 
     if not task_id:
         await update.message.reply_text(get_text('error_generic', context))
@@ -6008,7 +6137,24 @@ async def time_receive_custom(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Regex check
     time_pattern = re.compile(r'^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$')
     if not time_pattern.match(time_str):
-        await update.message.reply_text(get_text('time_invalid_format', context))
+        # 1. Удаляем введенное пользователем сообщение
+        try:
+            await update.message.delete()
+        except Exception as e:
+            logger.warning(f"Не удалось удалить сообщение пользователя: {e}")
+
+        # 2. Отправляем временное сообщение об ошибке
+        error_msg = await context.bot.send_message(chat_id, get_text('time_invalid_format', context))
+
+        # 3. Запланировать удаление сообщения об ошибке через 3 секунды
+        async def delete_error_message():
+            await asyncio.sleep(3)
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=error_msg.message_id)
+            except Exception:
+                pass  # Сообщение уже удалено - это нормально
+
+        asyncio.create_task(delete_error_message())
         return TASK_SET_CUSTOM_TIME
 
     hours, minutes = time_str.split(':')
@@ -6021,15 +6167,34 @@ async def time_receive_custom(update: Update, context: ContextTypes.DEFAULT_TYPE
     limits = get_tariff_limits(user_tariff)
     max_slots = limits['time_slots']
 
+    time_added = False
     if time_str not in selected_times:
         # --- CHECK TIME LIMITS ---
         if len(selected_times) >= max_slots:
+            # Удаляем сообщение пользователя
+            try:
+                await update.message.delete()
+            except Exception as e:
+                logger.warning(f"Не удалось удалить сообщение пользователя: {e}")
+
             error_text = get_text('limit_error_times', context).format(
                 current=len(selected_times),
                 max=max_slots,
                 tariff=limits['name']
             )
-            await update.message.reply_text(error_text)
+
+            # Отправляем временное сообщение об ошибке
+            error_msg = await context.bot.send_message(chat_id, error_text)
+
+            # Удаляем сообщение об ошибке через 3 секунды
+            async def delete_error_message():
+                await asyncio.sleep(3)
+                try:
+                    await context.bot.delete_message(chat_id=chat_id, message_id=error_msg.message_id)
+                except Exception:
+                    pass
+
+            asyncio.create_task(delete_error_message())
             return TASK_SET_CUSTOM_TIME
         # --- END CHECK ---
 
@@ -6041,7 +6206,7 @@ async def time_receive_custom(update: Update, context: ContextTypes.DEFAULT_TYPE
             for date_val in unique_dates_data:
                 add_task_schedule(task_id, 'datetime', schedule_date=date_val, schedule_time=time_str)
 
-        elif weekdays:  # <--- ADDED THIS BLOCK
+        elif weekdays:
             unique_weekdays = {w['schedule_weekday'] for w in weekdays}
             for wd in unique_weekdays:
                 add_task_schedule(task_id, 'weekday_and_time', schedule_weekday=wd, schedule_time=time_str)
@@ -6049,22 +6214,37 @@ async def time_receive_custom(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             add_task_schedule(task_id, 'time', schedule_time=time_str)
 
+        time_added = True
+
     # --- TRIGGER HOT RELOAD ---
-    await refresh_task_jobs(task_id, context)
+    if time_added:
+        await refresh_task_jobs(task_id, context)
 
-    msg = await update.message.reply_text(get_text('time_saved', context))
-    await sleep(3)
-
-    # delete the message
+    # 1. Удаляем сообщение пользователя (даже если время уже было в списке)
     try:
-        await msg.delete()
-    except:
-        pass
+        await update.message.delete()
+    except Exception as e:
+        logger.warning(f"Не удалось удалить сообщение пользователя: {e}")
 
+    # 2. Отправляем временное сообщение-подтверждение
+    msg = await context.bot.send_message(chat_id, get_text('time_saved', context))
+
+    # 3. Удаляем подтверждение через 2 секунды
+    async def delete_confirmation():
+        await asyncio.sleep(2)
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=msg.message_id)
+        except Exception:
+            pass  # Сообщение уже удалено - это нормально
+
+    asyncio.create_task(delete_confirmation())
+
+    # 4. Возвращаемся в конструктор (он сам почистит предыдущие сообщения)
     return await show_task_constructor(update, context)
 
 
 async def time_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     """Clear all selected times but PRESERVE dates and weekdays"""
     query = update.callback_query
     await query.answer()
@@ -7593,8 +7773,8 @@ def main():
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
             CallbackQueryHandler(task_constructor_entrypoint, pattern="^nav_new_task$"),
             CallbackQueryHandler(task_edit_entrypoint, pattern="^task_edit_"),
-            CallbackQueryHandler(nav_tariff, pattern="^nav_tariff$"),  # FIX TASK 1
-            reply_button_handler  # <--- ДОБАВЛЕНО
+            CallbackQueryHandler(nav_tariff, pattern="^nav_tariff$"),
+            reply_button_handler
         ],
         MY_CHANNELS: [
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
