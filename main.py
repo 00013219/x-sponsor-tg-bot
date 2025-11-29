@@ -33,8 +33,6 @@ from psycopg2 import errorcodes
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from watchfiles import awatch
-
 
 load_dotenv()
 
