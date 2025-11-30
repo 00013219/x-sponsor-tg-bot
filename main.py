@@ -123,13 +123,15 @@ scheduler = AsyncIOScheduler(timezone='UTC')
     BOSS_BAN_CONFIRM,
     BOSS_MONEY_VIEW,
     BOSS_LOGS_VIEW,
+    BOSS_GRANT_TARIFF,
+    BOSS_GRANT_CONFIRM,
 
     # --- НОВОЕ СОСТОЯНИЕ ---
     TASK_SET_PIN_CUSTOM,
     TASK_SET_DELETE_CUSTOM,
     TASK_DELETE_CONFIRM
 
-) = range(49)
+) = range(51)
 
 # --- Тексты (i18n) ---
 TEXTS = {
@@ -355,6 +357,7 @@ TEXTS = {
         'task_advertiser_notify': "📢 Вас указали рекламодателем в задаче \"{task_name}\". Вы будете получать уведомления о публикациях.",
 
         'payment_success_template': "✅ Оплата прошла успешно!\n\nТариф **{tariff_name}** активирован.",
+        'tariff_success_template': "✅ Вы получили новый тариф!\n\nТариф **{tariff_name}** активирован.",
         'error_notify_user': "❌ Не удалось уведомить пользователя {user_id} о добавлении канала. Возможно, бот заблокирован.",
         'error_invoice_creation': "❌ Не удалось создать счет на оплату. Попробуйте позже.",
         'error_tariff_not_found': "❌ Ошибка: Тариф не найден.",
@@ -481,7 +484,44 @@ TEXTS = {
         'advertiser_notification': "🔔 Вы были назначены рекламодателем для задачи: **{task_name}** (ID: {task_id})",
         'advertiser_report_template': "✅ **Задача выполнена!**\n\n📢 Канал: **{channel_title}**\n📝 Задача: {task_title}\n⏰ Время: {time} UTC",
 
-        'task_report_msg': "🔔 **Задача #{task_data} Отчет**\n"
+        'task_report_msg': "🔔 **Задача #{task_data} Отчет**\n",
+        'boss_grant_btn': '🎁 Выдать тариф',
+        'boss_grant_title': '🎁 Выдача тарифа пользователю',
+        'boss_grant_instructions': '''
+**Инструкция:**
+Отправьте сообщение в формате:
+`@username название_тарифа`
+
+**Примеры:**
+`@john pro1` - Выдать тариф Pro 1
+`@alice pro2` - Выдать тариф Pro 2
+`@bob pro3` - Выдать тариф Pro 3
+
+**Доступные тарифы:**
+`free` - Бесплатный
+`pro1` - Pro 1
+`pro2` - Pro 2
+`pro3` - Pro 3
+`pro4` - Pro 4
+
+''',
+        'boss_grant_invalid_format': '❌ Неверный формат. Используйте: @username название_тарифа',
+        'boss_grant_user_not_found': '❌ Пользователь не найден в базе данных',
+        'boss_grant_invalid_tariff': '❌ Неверное название тарифа. Доступны: free, pro1, pro2, pro3, pro4',
+        'boss_grant_confirm_template': '''
+**Подтвердите выдачу:**
+
+Пользователь: @{username}
+ID: {user_id}
+Текущий тариф: {current_tariff}
+Новый тариф: **{new_tariff}**
+
+Подтвердить?
+
+        ''',
+        'boss_grant_success': '✅ Тариф **{tariff_name}** выдан @{username} (ID: {user_id})',
+        'boss_grant_confirm_yes': '✅ Да, выдать',
+        'boss_grant_confirm_no': '❌ Нет, отмена',
 
     },
     'en': {
@@ -573,6 +613,7 @@ Let's get started! Please select your language:""",
         'task_actions_title': "🛠️ **Task Management** #{task_id}",
         'task_edit_btn': "📝 Edit",
         'task_view_btn': "👀 Preview",
+        'tariff_success_template': "✅ You have received a new tariff!\n\nThe tariff **{tariff_name}** is activated.",
         'task_delete_confirm': "Are you sure you want to delete task **{name}** (#{id})?",
         'task_delete_success': "🗑️ Task **{name}** (#{id}) deleted.",
 
@@ -830,7 +871,46 @@ Let's get started! Please select your language:""",
         'channel_occupied_error': "⚠️ This channel is already added by another user.",
         'advertiser_notification': "🔔 You have been set as the advertiser for task: **{task_name}** (ID: {task_id})",
         'advertiser_report_template': "✅ **The task is completed!**\n\n📢 Chennel: **{channel_title}**\n📝 Task: {task_title}\n⏰ Time: {time} UTC",
-        'task_report_msg': "🔔 **Task #{task_data} report**\n"
+        'task_report_msg': "🔔 **Task #{task_data} report**\n",
+
+        'boss_grant_btn': '🎁 Grant Tariff',
+        'boss_grant_title': '🎁 Grant Tariff to User',
+        'boss_grant_instructions':
+            '''
+**Instructions:**
+Send a message in the format:
+"@username tariff_name"
+
+**Examples:**
+"@john pro1" - Grant Pro 1 tariff
+"@alice pro2" - Grant Pro 2 tariff
+"@bob pro3" - Grant Pro 3 tariff
+
+**Available tariffs:**
+"free" - Free
+"pro1` - Pro 1
+"pro2" - Pro 2
+"pro3" - Pro 3
+"pro4" - Pro 4
+
+''',
+        'boss_grant_invalid_format': '❌ Invalid format. Use: @username tariff_name',
+        'boss_grant_user_not_found': '❌ User not found in the database',
+        'boss_grant_invalid_tariff': '❌ Invalid tariff name. Available: free, pro1, pro2, pro3, pro4',
+        'boss_grant_confirm_template': '''
+**Confirm Grant:**
+
+User: @{username}
+User ID: {user_id}
+Current Tariff: {current_tariff}
+New Tariff: **{new_tariff}**
+
+Confirm?
+
+''',
+        'boss_grant_success': '✅ Tariff **{tariff_name}** granted to @{username} (ID: {user_id})',
+        'boss_grant_confirm_yes': '✅ Yes, grant',
+        'boss_grant_confirm_no': '❌ No, cancel',
     },
     'es': {
         'welcome_lang': """🤖 ¡Bienvenido a XSponsorBot!
@@ -1162,7 +1242,7 @@ Mi objetivo es hacer que tu colaboración con los anunciantes sea lo más eficie
         'task_message_preview_footer': 'El mensaje será publicado tal como se muestra arriba ⬆️',
         'dont_have_channels': "No tienes canales añadidos. Primero, agrega al bot como administrador en el canal.",
         'choose_channel': '📢 Selecciona los canales para publicar:\n(Haz clic en el canal para seleccionar/cancelar)',
-        'choose_options': 'Elige opciones'
+        'choose_options': 'Elige opciones',
     },
     'fr': {
         'welcome_lang': """🤖 Bienvenue sur XSponsorBot!
@@ -2377,45 +2457,18 @@ def get_critical_logs(limit=50):
 
 def generate_smart_name(text: str, context: ContextTypes.DEFAULT_TYPE, limit: int = 3) -> str:
     """
-    Генерирует короткое название: первые N информативных слов,
-    исключая предлоги, союзы, артикли и числа.
-    Если после фильтрации ничего не осталось — берёт первые N оригинальных слов.
+    Возвращает первые N слов текста.
+    Если слов меньше — берёт сколько есть.
     """
     if not text:
         return get_text('name_not_set', context)
 
-    stop_words = {
-        'в', 'на', 'под', 'за', 'к', 'до', 'по', 'из', 'у', 'о', 'об', 'с', 'от', 'для', 'и', 'или', 'но', 'а',
-        'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'and', 'or', 'but', 'the', 'a', 'an'
-    }
-
-    # Убираем пунктуацию, оставляем буквы/цифры/нижнее подчёркивание
+    # Убираем пунктуацию, оставляем буквы/цифры/пробелы
     clean_text = re.sub(r"[^\w\s]", "", text)
-
     words = clean_text.split()
-    filtered_words = []
 
-    for w in words:
-        lw = w.lower()
+    return " ".join(words[:limit]) + ("..." if len(words) > limit else "")
 
-        # Пропуск чисел
-        if lw.isdigit():
-            continue
-
-        # Пропуск стоп-слов
-        if lw in stop_words:
-            continue
-
-        filtered_words.append(w)
-
-        if len(filtered_words) >= limit:
-            break
-
-    # Если после фильтрации ничего нет — берём первые N слов как есть
-    if not filtered_words:
-        return " ".join(words[:limit]) + "..."
-
-    return " ".join(filtered_words) + "..."
 
 
 
@@ -2836,45 +2889,96 @@ def init_db():
 # --- Функции для работы с БД (НОВЫЕ) ---
 
 def db_query(sql: str, params: tuple = None, fetchone=False, fetchall=False, commit=False) -> Optional[Any]:
-    """Универсальный хелпер для запросов к БД"""
+    """Универсальный хелпер для запросов к БД с улучшенной обработкой ошибок"""
     if not db_pool:
         logger.error("DB pool not available in db_query")
         return None
 
     conn = None
-    try:
-        conn = db_pool.getconn()
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(sql, params or ())
+    max_retries = 3
+    retry_count = 0
 
-            if commit:
-                conn.commit()
+    while retry_count < max_retries:
+        try:
+            conn = db_pool.getconn()
+
+            # Test if connection is alive
+            with conn.cursor() as test_cur:
+                test_cur.execute("SELECT 1")
+
+            # Connection is good, proceed with actual query
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, params or ())
+
+                if commit:
+                    conn.commit()
+                    if fetchone:
+                        return dict(cur.fetchone()) if cur.rowcount else None
+                    if "RETURNING" in sql.upper() and cur.rowcount:
+                        row = cur.fetchone()
+                        return dict(row) if row else None
+                    return None
+
                 if fetchone:
-                    return dict(cur.fetchone()) if cur.rowcount else None
+                    row = cur.fetchone()
+                    return dict(row) if row else None
+                if fetchall:
+                    return [dict(row) for row in cur.fetchall()]
+
+                # Для INSERT ... RETURNING id
                 if "RETURNING" in sql.upper() and cur.rowcount:
                     row = cur.fetchone()
                     return dict(row) if row else None
+
+            # Success - return connection to pool
+            if conn and db_pool:
+                db_pool.putconn(conn)
+            return None
+
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+            # Connection error - close bad connection and retry
+            logger.warning(f"DB connection error (attempt {retry_count + 1}/{max_retries}): {e}")
+
+            if conn:
+                try:
+                    conn.close()
+                except:
+                    pass
+                # Remove bad connection from pool
+                try:
+                    db_pool.putconn(conn, close=True)
+                except:
+                    pass
+                conn = None
+
+            retry_count += 1
+
+            if retry_count >= max_retries:
+                logger.error(f"DB query failed after {max_retries} attempts (SQL: {sql[:100]}...): {e}")
                 return None
 
-            if fetchone:
-                row = cur.fetchone()
-                return dict(row) if row else None
-            if fetchall:
-                return [dict(row) for row in cur.fetchall()]
+            # Wait a bit before retrying
+            import time
+            time.sleep(0.5 * retry_count)
 
-            # Для INSERT ... RETURNING id
-            if "RETURNING" in sql.upper() and cur.rowcount:
-                row = cur.fetchone()
-                return dict(row) if row else None
+        except (Exception, psycopg2.Error) as e:
+            logger.error(f"DB error in db_query (SQL: {sql[:100]}...): {e}")
+            if conn:
+                try:
+                    conn.rollback()
+                except:
+                    pass
+            return None
 
-    except (Exception, psycopg2.Error) as e:
-        logger.error(f"DB error in db_query (SQL: {sql[:100]}...): {e}")
-        if conn:
-            conn.rollback()
-        return None
-    finally:
-        if conn and db_pool:
-            db_pool.putconn(conn)
+        finally:
+            # Always return connection to pool if we still have it
+            if conn and db_pool:
+                try:
+                    db_pool.putconn(conn)
+                except:
+                    pass
+
+    return None
 
 
 # --- Пользователи ---
@@ -3703,17 +3807,145 @@ def boss_panel_keyboard(context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton(get_text('boss_mailing_btn', context), callback_data="boss_mailing")],
         [InlineKeyboardButton(get_text('boss_signature_btn', context), callback_data="boss_signature")],
-        # <-- НОВАЯ КНОПКА
         [InlineKeyboardButton(get_text('boss_users_btn', context), callback_data="boss_users")],
         [InlineKeyboardButton(get_text('boss_stats_btn', context), callback_data="boss_stats")],
-        # [InlineKeyboardButton(get_text('boss_limits_btn', context), callback_data="boss_limits")],
-        # [InlineKeyboardButton(get_text('boss_tariffs_btn', context), callback_data="boss_tariffs")],
         [InlineKeyboardButton(get_text('boss_ban_btn', context), callback_data="boss_ban")],
+        [InlineKeyboardButton(get_text('boss_grant_btn', context), callback_data="boss_grant")],  # NEW
         [InlineKeyboardButton(get_text('boss_money_btn', context), callback_data="boss_money")],
         [InlineKeyboardButton(get_text('boss_logs_btn', context), callback_data="boss_logs")],
         [InlineKeyboardButton(get_text('back_btn', context), callback_data="nav_main_menu")]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+
+async def boss_grant_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """(Boss) Start grant tariff process - show instructions"""
+    query = update.callback_query
+    await query.answer()
+
+    text = get_text('boss_grant_title', context) + "\n\n"
+    text += get_text('boss_grant_instructions', context)
+
+    keyboard = [[InlineKeyboardButton(get_text('boss_back_btn', context), callback_data="nav_boss")]]
+
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    return BOSS_GRANT_TARIFF
+
+
+async def boss_grant_receive_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """(Boss) Receive and parse grant input: @username tariff"""
+    user_input = update.message.text.strip()
+
+    # Parse input: @username tariff_name
+    parts = user_input.split()
+
+    if len(parts) != 2:
+        await update.message.reply_text(get_text('boss_grant_invalid_format', context))
+        return BOSS_GRANT_TARIFF
+
+    username_input = parts[0]
+    tariff_input = parts[1].lower()
+
+    # Remove @ if present
+    if username_input.startswith('@'):
+        username_input = username_input[1:]
+
+    # Validate tariff
+    valid_tariffs = ['free', 'pro1', 'pro2', 'pro3', 'pro4']
+    if tariff_input not in valid_tariffs:
+        await update.message.reply_text(get_text('boss_grant_invalid_tariff', context))
+        return BOSS_GRANT_TARIFF
+
+    # Find user
+    target_user = get_user_by_username(username_input)
+
+    if not target_user:
+        await update.message.reply_text(get_text('boss_grant_user_not_found', context))
+        return BOSS_GRANT_TARIFF
+
+    # Store data for confirmation
+    context.user_data['grant_target_id'] = target_user['user_id']
+    context.user_data['grant_target_username'] = target_user['username'] or "N/A"
+    context.user_data['grant_current_tariff'] = target_user['tariff']
+    context.user_data['grant_new_tariff'] = tariff_input
+
+    # Get tariff names for display
+    current_limits = get_tariff_limits(target_user['tariff'])
+    new_limits = get_tariff_limits(tariff_input)
+
+    # Confirmation message
+    text = get_text('boss_grant_confirm_template', context).format(
+        username=target_user['username'] or '???',
+        user_id=target_user['user_id'],
+        current_tariff=current_limits['name'],
+        new_tariff=new_limits['name']
+    )
+
+    keyboard = [
+        [InlineKeyboardButton(get_text('boss_grant_confirm_yes', context), callback_data="boss_grant_confirm_yes")],
+        [InlineKeyboardButton(get_text('boss_grant_confirm_no', context), callback_data="nav_boss")]
+    ]
+
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    return BOSS_GRANT_CONFIRM
+
+
+async def boss_grant_confirm_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """(Boss) Confirm and execute tariff grant"""
+    query = update.callback_query
+    await query.answer()
+
+    target_id = context.user_data.get('grant_target_id')
+    target_username = context.user_data.get('grant_target_username', 'N/A')
+    new_tariff = context.user_data.get('grant_new_tariff')
+
+    if not target_id or not new_tariff:
+        await query.edit_message_text(get_text('boss_ban_session_error', context))
+        return await nav_boss(update, context)
+
+    # Update tariff in database
+    db_query("UPDATE users SET tariff = %s WHERE user_id = %s", (new_tariff, target_id), commit=True)
+
+    # Get tariff name for display
+    limits = get_tariff_limits(new_tariff)
+    tariff_name = limits['name']
+
+    # Success message
+    text = get_text('boss_grant_success', context).format(
+        tariff_name=tariff_name,
+        username=target_username,
+        user_id=target_id
+    )
+
+    # Notify the user
+    try:
+        user_settings = get_user_settings(target_id)
+        user_lang = user_settings.get('language_code', 'en')
+
+        notification = get_text('tariff_success_template', context, lang=user_lang).format(
+            tariff_name=tariff_name
+        )
+
+        await context.bot.send_message(chat_id=target_id, text=notification)
+    except Exception as e:
+        logger.error(f"Failed to notify user {target_id} about tariff grant: {e}")
+        text += "\n\n⚠️ User notification failed."
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton(get_text('boss_back_to_boss', context), callback_data="nav_boss")]]
+        ),
+        parse_mode='HTML'
+    )
+
+    # Cleanup
+    context.user_data.pop('grant_target_id', None)
+    context.user_data.pop('grant_target_username', None)
+    context.user_data.pop('grant_current_tariff', None)
+    context.user_data.pop('grant_new_tariff', None)
+
+    return BOSS_PANEL
 
 
 # --- Хелперы ConversationHandler ---
@@ -4692,9 +4924,7 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
     raw_name = task['task_name'] if task['task_name'] else get_text('task_default_name', context)
 
     if task['task_name']:
-        # Take first 3 words BEFORE passing to smart-name generator
-        first_three_words = " ".join(raw_name.split()[:3])
-        display_name = generate_smart_name(first_three_words, context, limit=3)
+        display_name = generate_smart_name(raw_name, context, limit=3)
     else:
         display_name = raw_name
 
@@ -8147,15 +8377,26 @@ def main():
         BOSS_PANEL: [
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
             CallbackQueryHandler(nav_boss, pattern="^nav_boss$"),
-            CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
             CallbackQueryHandler(boss_mailing, pattern="^boss_mailing$"),
             CallbackQueryHandler(boss_signature, pattern="^boss_signature$"),
             CallbackQueryHandler(boss_users, pattern="^boss_users$"),
             CallbackQueryHandler(boss_stats, pattern="^boss_stats$"),
             CallbackQueryHandler(boss_ban_start, pattern="^boss_ban$"),
+            CallbackQueryHandler(boss_grant_start, pattern="^boss_grant$"),  # NEW
             CallbackQueryHandler(boss_money, pattern="^boss_money$"),
             CallbackQueryHandler(boss_logs, pattern="^boss_logs$"),
-            reply_button_handler  # <--- ДОБАВЛЕНО
+            reply_button_handler
+        ],
+
+        BOSS_GRANT_TARIFF: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, boss_grant_receive_input),
+            CallbackQueryHandler(nav_boss, pattern="^nav_boss$"),
+        ],
+
+        BOSS_GRANT_CONFIRM: [
+            CallbackQueryHandler(boss_grant_confirm_yes, pattern="^boss_grant_confirm_yes$"),
+            CallbackQueryHandler(nav_boss, pattern="^nav_boss$"),
+            reply_button_handler
         ],
 
         # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
