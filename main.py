@@ -13,6 +13,7 @@ import math
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, ReplyKeyboardMarkup, KeyboardButton, \
     InputMediaPhoto, InputMediaVideo, InputMediaAudio, InputMediaDocument
+from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -33,6 +34,7 @@ from psycopg2.pool import SimpleConnectionPool
 from psycopg2 import errorcodes
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 
 load_dotenv()
 
@@ -301,7 +303,11 @@ TEXTS = {
         'boss_mailing_failed_count': "❌ Ошибок: {failed}",
         'boss_back_to_boss': "⬅️ Назад в Boss",
         'boss_signature_title': "🌵 **Подпись для FREE тарифа**",
-        'boss_signature_info': "Эта подпись будет добавляться к постам пользователей с тарифом FREE.",
+        'boss_signature_info': 'ℹ️ Эта подпись будет добавлена ко всем постам от пользователей с тарифом FREE.\n\n'
+                               '💡 Вы можете использовать HTML форматирование:\n'
+                               '• &lt;b&gt;жирный&lt;/b&gt;\n'
+                               '• &lt;i&gt;курсив&lt;/i&gt;\n'
+                               '• &lt;a href="https://example.com"&gt;текстовая ссылка&lt;/a&gt;',
         'boss_signature_current': "📝 Текущая подпись:\n{current_text}\n\nОтправьте новый текст подписи или нажмите кнопки ниже:",
         'boss_signature_not_set': "Не установлена",
         'boss_signature_delete_btn': "🗑️ Удалить подпись",
@@ -691,7 +697,11 @@ Let's get started! Please select your language:""",
         'boss_mailing_failed_count': "❌ Errors: {failed}",
         'boss_back_to_boss': "⬅️ Back to Boss",
         'boss_signature_title': "🌵 **Signature for FREE plan**",
-        'boss_signature_info': "This signature will be added to posts of users on the FREE plan.",
+        'boss_signature_info': 'ℹ️ This signature will be added to all posts from FREE users.\n\n'
+                               '💡 You can use HTML formatting:\n'
+                               '• &lt;b&gt;bold&lt;/b&gt;\n'
+                               '• &lt;i&gt;italic&lt;/i&gt;\n'
+                               '• &lt;a href="https://example.com"&gt;text link&lt;/a&gt;',
         'boss_signature_current': "📝 Current signature:\n{current_text}\n\nSend new signature text or click the buttons below:",
         'boss_signature_not_set': "Not set",
         'boss_signature_delete_btn': "🗑️ Delete Signature",
@@ -3025,7 +3035,7 @@ def persistent_reply_keyboard(context: ContextTypes.DEFAULT_TYPE):
         ],
         [
             KeyboardButton(get_text('nav_tariff_btn', context, lang)),
-            KeyboardButton(get_text('nav_reports_btn', context, lang))
+            KeyboardButton(get_text('nav_channels_btn', context, lang))
         ]
     ]
 
@@ -3361,7 +3371,7 @@ def bottom_navigation_keyboard(context: ContextTypes.DEFAULT_TYPE):
         ],
         [
             InlineKeyboardButton(get_text('nav_tariff_btn', context), callback_data="nav_tariff"),
-            InlineKeyboardButton(get_text('nav_reports_btn', context), callback_data="nav_reports")
+            InlineKeyboardButton(get_text('nav_channels_btn', context), callback_data="nav_my_channels")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -3388,7 +3398,15 @@ def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
         push_val = task.get('pin_notify', False)
         report_val = task.get('report_enabled', False)
         post_type = task.get('post_type', 'repost')
-        is_active = task.get('status') == 'active'
+        if task.get('status') == 'active':
+            # Check if there are actually scheduled jobs
+            future_jobs = db_query("""
+                        SELECT COUNT(*) as count FROM publication_jobs 
+                        WHERE task_id = %s AND status = 'scheduled'
+                    """, (task_id,), fetchone=True)
+            is_active = future_jobs and future_jobs['count'] > 0
+        else:
+            is_active = False
         has_message = bool(task.get('content_message_id'))
         channels = get_task_channels(task_id)
         has_channels = bool(channels)
@@ -4054,7 +4072,7 @@ def main_menu_reply_keyboard(context: ContextTypes.DEFAULT_TYPE):
         ],
         [
             KeyboardButton(get_text('nav_tariff_btn', context, lang)),
-            KeyboardButton(get_text('nav_reports_btn', context, lang))
+            KeyboardButton(get_text('nav_channels_btn', context, lang))
         ]
     ]
 
@@ -4127,8 +4145,8 @@ async def handle_reply_keyboard(update: Update, context: ContextTypes.DEFAULT_TY
         return await nav_timezone(update, context)
     elif text == get_text('nav_tariff_btn', context, lang):
         return await nav_tariff(update, context)
-    elif text == get_text('nav_reports_btn', context, lang):
-        return await nav_reports(update, context)
+    elif text == get_text('nav_channels_btn', context, lang):
+        return await nav_my_channels(update, context)
     elif text == get_text('nav_boss_btn', context, lang):
         # Add check to ensure only owner can use this button
         if context.user_data.get('user_id') == OWNER_ID:
@@ -4412,8 +4430,18 @@ async def channel_delete_confirm(update: Update, context: ContextTypes.DEFAULT_T
 
 async def nav_my_channels(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает экран 'Мои площадки'"""
+
+    # Figure out where the request came from
     query = update.callback_query
-    await query.answer()
+    message = update.message
+
+    # If callback
+    if query:
+        await query.answer()
+        chat_id = query.message.chat_id
+    else:
+        # If normal text message (reply keyboard)
+        chat_id = message.chat_id
 
     user_id = context.user_data['user_id']
     channels = get_user_channels(user_id)
@@ -4430,11 +4458,18 @@ async def nav_my_channels(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard.append([InlineKeyboardButton(f"📊 {title}", callback_data=f"channel_manage_{ch['channel_id']}")])
 
     text += get_text('my_channels_footer', context)
-    # keyboard.append([InlineKeyboardButton("📌 Добавить чат/канал (ЗАГЛУШКА)", callback_data="channel_add_info")])
     keyboard.append([InlineKeyboardButton(get_text('back_btn', context), callback_data="nav_main_menu")])
 
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    markup = InlineKeyboardMarkup(keyboard)
+
+    # Edit or send depending on source
+    if query:
+        await query.edit_message_text(text, reply_markup=markup)
+    else:
+        await message.reply_text(text, reply_markup=markup)
+
     return MY_CHANNELS
+
 
 
 async def nav_free_dates(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4688,18 +4723,36 @@ async def boss_signature(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text += get_text('boss_signature_info', context) + "\n\n"
     text += get_text('boss_signature_current', context).format(current_text=current_text)
 
-    keyboard = [
-        [InlineKeyboardButton(get_text('boss_signature_delete_btn', context), callback_data="boss_signature_delete")],
-        [InlineKeyboardButton(get_text('boss_back_btn', context), callback_data="nav_boss")]
-    ]
+    if current_signature and current_signature.get('signature'):
+        delete_btn = [
+            InlineKeyboardButton(
+                get_text('boss_signature_delete_btn', context),
+                callback_data="boss_signature_delete"
+            )
+        ]
+    else:
+        delete_btn = None
 
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    keyboard = []
+    if delete_btn:
+        keyboard.append(delete_btn)
+    keyboard.append([
+        InlineKeyboardButton(
+            get_text('boss_back_btn', context),
+            callback_data="nav_boss"
+        )
+    ])
+
+    # Use HTML parse mode - now it will work because examples are escaped
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+
     return BOSS_SIGNATURE_EDIT
 
 
 async def boss_signature_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Получение новой подписи"""
     signature = update.message.text.strip()
+    signature = signature.replace("“", '"').replace("”", '"').replace("’", "'")
 
     if len(signature) > 200:
         await update.message.reply_text(get_text('boss_signature_too_long', context))
@@ -4724,7 +4777,9 @@ async def boss_signature_receive(update: Update, context: ContextTypes.DEFAULT_T
     text = get_text('boss_signature_updated', context).format(signature=signature)
     keyboard = [[InlineKeyboardButton(get_text('boss_back_to_boss', context), callback_data="nav_boss")]]
 
-    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    # Use HTML parse mode so the saved signature displays correctly
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+
     return BOSS_PANEL
 
 
@@ -4738,33 +4793,104 @@ async def boss_signature_delete(update: Update, context: ContextTypes.DEFAULT_TY
     """, commit=True)
 
     text = get_text('boss_signature_deleted', context)
-    keyboard = [[InlineKeyboardButton(get_text('boss_back_to_boss', context), callback_data="nav_boss")]]
+    await query.edit_message_text(text)
+    await asyncio.sleep(2)
 
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    return BOSS_PANEL
+    try:
+        await query.message.delete()
+    except Exception as e:
+        logger.warning(f"Could not delete success message: {e}")
+
+    # Send new signature menu
+    current_text = get_text('boss_signature_not_set', context)
+
+    menu_text = get_text('boss_signature_title', context) + "\n\n"
+    menu_text += get_text('boss_signature_info', context) + "\n\n"
+    menu_text += get_text('boss_signature_current', context).format(current_text=current_text)
+
+    current_signature = db_query("""
+            SELECT signature FROM bot_settings WHERE id = 1
+        """, fetchone=True)
+
+    if current_signature and current_signature.get('signature'):
+        delete_btn = [
+            InlineKeyboardButton(
+                get_text('boss_signature_delete_btn', context),
+                callback_data="boss_signature_delete"
+            )
+        ]
+    else:
+        delete_btn = None
+
+    keyboard = []
+    if delete_btn:
+        keyboard.append(delete_btn)
+    keyboard.append([
+        InlineKeyboardButton(
+            get_text('boss_back_btn', context),
+            callback_data="nav_boss"
+        )
+    ])
+
+    # Use HTML parse mode
+    await context.bot.send_message(
+        chat_id=query.message.chat_id,
+        text=menu_text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
+
+    return BOSS_SIGNATURE_EDIT
 
 
 async def nav_boss(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает админ-панель"""
+
     query = update.callback_query
-    await query.answer()
-    if query.from_user.id != OWNER_ID:
-        await query.answer(get_text('boss_no_access', context))
-        return MAIN_MENU
+    message = update.message
 
-    text = get_text('boss_menu_title', context)
-    text += "\n\n" + get_text('boss_quick_stats', context) + "\n"
+    # 🔥 Case 1: ReplyKeyboard or text ("Boss") → update.message
+    if message:
+        if message.from_user.id != OWNER_ID:
+            await message.reply_text(get_text('boss_no_access', context))
+            return MAIN_MENU
 
-    stats = get_bot_statistics()
-    text += get_text('boss_total_users', context).format(total_users=stats['total_users']) + "\n"
-    text += get_text('boss_active_users', context).format(active_users=stats['active_users']) + "\n"
-    text += get_text('boss_active_tasks', context).format(tasks_active=stats['tasks_active']) + "\n"
+        # Send new Boss menu
+        text = get_text('boss_menu_title', context)
+        text += "\n\n" + get_text('boss_quick_stats', context) + "\n"
 
-    await query.edit_message_text(
-        text,
-        reply_markup=boss_panel_keyboard(context)
-    )
-    return BOSS_PANEL
+        stats = get_bot_statistics()
+        text += get_text('boss_total_users', context).format(total_users=stats['total_users']) + "\n"
+        text += get_text('boss_active_users', context).format(active_users=stats['active_users']) + "\n"
+        text += get_text('boss_active_tasks', context).format(tasks_active=stats['tasks_active']) + "\n"
+
+        await message.reply_text(
+            text,
+            reply_markup=boss_panel_keyboard(context)
+        )
+        return BOSS_PANEL
+
+    # 🔥 Case 2: InlineKeyboard → update.callback_query
+    if query:
+        await query.answer()
+
+        if query.from_user.id != OWNER_ID:
+            await query.answer(get_text('boss_no_access', context))
+            return MAIN_MENU
+
+        text = get_text('boss_menu_title', context)
+        text += "\n\n" + get_text('boss_quick_stats', context) + "\n"
+
+        stats = get_bot_statistics()
+        text += get_text('boss_total_users', context).format(total_users=stats['total_users']) + "\n"
+        text += get_text('boss_active_users', context).format(active_users=stats['active_users']) + "\n"
+        text += get_text('boss_active_tasks', context).format(tasks_active=stats['tasks_active']) + "\n"
+
+        await query.edit_message_text(
+            text,
+            reply_markup=boss_panel_keyboard(context)
+        )
+        return BOSS_PANEL
 
 
 # --- 3. Конструктор Задач ---
