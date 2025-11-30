@@ -34,7 +34,6 @@ from psycopg2 import errorcodes
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-
 load_dotenv()
 
 # --- Настройка логирования ---
@@ -7435,30 +7434,57 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def execute_delete_job(context: ContextTypes.DEFAULT_TYPE):
     """
-    ИСПОЛНИТЕЛЬ: Удаляет сообщение и обновляет статус в БД,
-    чтобы задача перестала быть 'Желтой', если это был последний пост.
+    ИСПОЛНИТЕЛЬ: Удаляет сообщение (или группу сообщений) и обновляет статус в БД.
     """
     bot = context.bot
     channel_id = context.job.data.get('channel_id')
-    message_id = context.job.data.get('message_id')
-    job_id = context.job.data.get('job_id')  # ID записи в publication_jobs
+    # This is the singular ID passed via job_queue (fallback for old jobs)
+    fallback_message_id = context.job.data.get('message_id')
+    job_id = context.job.data.get('job_id')
 
-    if not channel_id or not message_id:
+    if not channel_id:
         return
 
-    try:
-        await bot.delete_message(chat_id=channel_id, message_id=message_id)
-        logger.info(f"Удаление успешно: {message_id} из {channel_id}")
+    messages_to_delete = []
 
-        # --- ОБНОВЛЕНИЕ СТАТУСА В БД ---
-        if job_id:
-            db_query("UPDATE publication_jobs SET status = 'deleted' WHERE id = %s", (job_id,), commit=True)
+    # 1. Try to fetch the full list of IDs from DB
+    if job_id:
+        job_data = db_query("SELECT posted_message_ids, posted_message_id FROM publication_jobs WHERE id = %s",
+                            (job_id,), fetchone=True)
 
-    except Exception as e:
-        logger.error(f"Ошибка удаления: {e}")
-        # Все равно помечаем как удаленное/завершенное, чтобы не висело вечно желтым
-        if job_id:
-            db_query("UPDATE publication_jobs SET status = 'deleted' WHERE id = %s", (job_id,), commit=True)
+        if job_data and job_data.get('posted_message_ids'):
+            # Load list from JSONB
+            try:
+                ids = job_data['posted_message_ids']
+                if isinstance(ids, str):
+                    messages_to_delete = json.loads(ids)
+                elif isinstance(ids, list):
+                    messages_to_delete = ids
+            except Exception as e:
+                logger.error(f"Error parsing posted_message_ids: {e}")
+
+        # Fallback to single ID from DB if list is empty
+        if not messages_to_delete and job_data and job_data.get('posted_message_id'):
+            messages_to_delete = [job_data['posted_message_id']]
+
+    # 2. Final fallback to the ID passed in the job data (if DB query failed or returned nothing)
+    if not messages_to_delete and fallback_message_id:
+        messages_to_delete = [fallback_message_id]
+
+    # 3. Execute Deletion
+    deleted_count = 0
+    for msg_id in messages_to_delete:
+        try:
+            await bot.delete_message(chat_id=channel_id, message_id=msg_id)
+            deleted_count += 1
+        except Exception as e:
+            logger.warning(f"Ошибка удаления сообщения {msg_id} из {channel_id}: {e}")
+
+    logger.info(f"Удалено {deleted_count}/{len(messages_to_delete)} сообщений для job {job_id}")
+
+    # 4. Update Status
+    if job_id:
+        db_query("UPDATE publication_jobs SET status = 'deleted' WHERE id = %s", (job_id,), commit=True)
 
 
 async def execute_unpin_job(context: ContextTypes.DEFAULT_TYPE):
@@ -7509,7 +7535,8 @@ def get_next_weekday_including_today(base: datetime, target_weekday: int) -> dat
 
 async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
     """
-    EXECUTOR: Publishes post, schedules post-actions, and NOTIFIES ADVERTISER.
+    EXECUTOR: Publishes post, schedules post-actions, and NOTIFIES ADVERTISER/CREATOR.
+    Updated to support deleting Media Groups (Albums).
     """
     bot = context.bot
     job_id = context.job.data.get('job_id')
@@ -7536,17 +7563,22 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
     content_message_id = job_data['content_message_id']
     content_chat_id = job_data['content_chat_id']
     api_disable_notification = not job_data['pin_notify']
+
+    # Variables to track message IDs
     posted_message_id = None
+    all_posted_ids = []
 
     try:
         # 3. PUBLISHING
         if media_group_json:
+            # Handle Media Group (Album)
             media_data = media_group_json if isinstance(media_group_json, dict) else json.loads(media_group_json)
             input_media = []
             caption_to_use = media_data.get('caption')
+
             for i, f in enumerate(media_data['files']):
                 media_obj = None
-                # ... (Media object creation logic same as before) ...
+                # Create InputMedia objects based on type
                 if f['type'] == 'photo':
                     media_obj = InputMediaPhoto(media=f['media'], caption=caption_to_use if i == 0 else None)
                 elif f['type'] == 'video':
@@ -7555,28 +7587,35 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                     media_obj = InputMediaDocument(media=f['media'], caption=caption_to_use if i == 0 else None)
                 elif f['type'] == 'audio':
                     media_obj = InputMediaAudio(media=f['media'], caption=caption_to_use if i == 0 else None)
-                if media_obj: input_media.append(media_obj)
+
+                if media_obj:
+                    input_media.append(media_obj)
 
             if input_media:
                 sent_msgs = await bot.send_media_group(chat_id=channel_id, media=input_media,
                                                        disable_notification=api_disable_notification)
-                posted_message_id = sent_msgs[0].message_id
+
+                # --- NEW: Capture ALL message IDs from the album ---
+                all_posted_ids = [msg.message_id for msg in sent_msgs]
+                posted_message_id = sent_msgs[0].message_id  # Keep first one for pinning/reference
         else:
+            # Handle Single Message
             sent_msg = await bot.copy_message(chat_id=channel_id, from_chat_id=content_chat_id,
                                               message_id=content_message_id,
                                               disable_notification=api_disable_notification)
             posted_message_id = sent_msg.message_id
+            all_posted_ids = [posted_message_id]
 
-        logger.info(f"✅ Published successfully. Msg ID: {posted_message_id}")
+        logger.info(f"✅ Published successfully. Main Msg ID: {posted_message_id}, Total Msgs: {len(all_posted_ids)}")
 
         # 4. PINNING
         pin_duration = float(job_data['pin_duration'] or 0)
 
         if pin_duration > 0 and posted_message_id:
             try:
+                # We pin the first message (Telegram usually pins the whole album contextually)
                 await bot.pin_chat_message(chat_id=channel_id, message_id=posted_message_id,
                                            disable_notification=api_disable_notification)
-                # Calculate Unpin Time
                 unpin_time = datetime.now(ZoneInfo('UTC')) + timedelta(hours=pin_duration)
 
                 context.application.job_queue.run_once(execute_unpin_job, when=unpin_time,
@@ -7592,72 +7631,69 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
         if delete_hours > 0 and posted_message_id:
             del_time = datetime.now(ZoneInfo('UTC')) + timedelta(hours=delete_hours)
             context.application.job_queue.run_once(execute_delete_job, when=del_time,
-                                                   data={'channel_id': channel_id, 'message_id': posted_message_id,
-                                                         'job_id': job_id}, name=f"del_{job_id}_{posted_message_id}")
+                                                   data={'channel_id': channel_id,
+                                                         'message_id': posted_message_id,  # Fallback ID
+                                                         'job_id': job_id},
+                                                   name=f"del_{job_id}_{posted_message_id}")
 
-        # 6. UPDATE STATUS
+        # 6. UPDATE STATUS (Save all IDs to JSONB column)
+        ids_json = json.dumps(all_posted_ids)
+
         db_query(
-            "UPDATE publication_jobs SET status = 'published', published_at = NOW(), posted_message_id = %s WHERE id = %s",
-            (posted_message_id, job_id), commit=True)
+            "UPDATE publication_jobs SET status = 'published', published_at = NOW(), posted_message_id = %s, posted_message_ids = %s WHERE id = %s",
+            (posted_message_id, ids_json, job_id), commit=True)
 
-        time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # Prepare common data for reports
+        ch_info = db_query("SELECT channel_username, channel_title FROM channels WHERE channel_id = %s",
+                           (channel_id,), fetchone=True)
+        ch_title = ch_info.get('channel_title', str(channel_id)) if ch_info else str(channel_id)
+        current_time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         # 7. NOTIFY ADVERTISER (Task 1)
         if job_data['advertiser_user_id']:
             try:
-                # Get advertiser's language settings
                 adv_id = job_data['advertiser_user_id']
                 adv_settings = get_user_settings(adv_id)
                 adv_lang = adv_settings.get('language_code', 'en')
 
-                ch_info = db_query("SELECT channel_username, channel_title FROM channels WHERE channel_id = %s",
-                                   (channel_id,), fetchone=True)
-                ch_title = ch_info.get('channel_title', str(channel_id)) if ch_info else str(channel_id)
-
-                link = "N/A"
-                if ch_info and ch_info['channel_username']:
-                    link = f"https://t.me/{ch_info['channel_username']}/{posted_message_id}"
-
-                # Localized report
+                # Localized report for advertiser
                 report_text = get_text('advertiser_report_template', context, lang=adv_lang).format(
                     channel_title=ch_title,
                     task_title=task_data.get('task_name'),
-                    time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    time=current_time_str
                 )
 
                 await bot.send_message(chat_id=adv_id, text=report_text, parse_mode='Markdown')
             except Exception as e:
                 logger.error(f"Failed to report to advertiser: {e}")
 
-                # 8. REPORT TO USER (CREATOR) - FIXED
-                # Explicit check for boolean True (postgres might return 1 or True)
-                is_report_enabled = bool(task_data.get('report_enabled', False))
+        # 8. REPORT TO USER (CREATOR)
+        is_report_enabled = bool(task_data.get('report_enabled', False))
 
-                if is_report_enabled:
-                    try:
-                        creator_id = task_data['user_id']
-                        creator_settings = get_user_settings(creator_id)
-                        creator_lang = creator_settings.get('language_code', 'en')
+        if is_report_enabled:
+            try:
+                creator_id = task_data['user_id']
+                creator_settings = get_user_settings(creator_id)
+                creator_lang = creator_settings.get('language_code', 'en')
 
-                        # Reuse template but add prefix
-                        base_report = get_text('advertiser_report_template', context, lang=creator_lang).format(
-                            channel_title=ch_title, link=link, time=time_str
-                        )
+                user_report = get_text('advertiser_report_template', context, lang=creator_lang).format(
+                    channel_title=ch_title,
+                    task_title=task_data.get('task_name'),
+                    time=current_time_str
+                )
 
-                        user_report = f"✅ **Post Published!** (Task #{task_data['id']})\n\n{base_report}"
+                await bot.send_message(chat_id=creator_id, text=user_report, parse_mode='Markdown')
+                logger.info(f"Report sent to creator {creator_id}")
+            except Exception as e:
+                logger.error(f"Failed to report to task creator {task_data['user_id']}: {e}")
 
-                        await bot.send_message(chat_id=creator_id, text=user_report, parse_mode='Markdown')
-                        logger.info(f"Report sent to creator {creator_id}")
-                    except Exception as e:
-                        logger.error(f"Failed to report to task creator {task_data['user_id']}: {e}")
-
-                # 9. SCHEDULE NEXT RECURRENCE
-                schedules = get_task_schedules(task_data['id'])
-                this_run_time_utc = job_data['scheduled_time_utc'].replace(tzinfo=ZoneInfo('UTC'))
-                for schedule in schedules:
-                    if schedule['schedule_weekday'] is not None:
-                        next_run_utc = this_run_time_utc + timedelta(days=7)
-                        _create_single_publication_job(task_data, channel_id, next_run_utc, context.application)
+        # 9. SCHEDULE NEXT RECURRENCE
+        schedules = get_task_schedules(task_data['id'])
+        this_run_time_utc = job_data['scheduled_time_utc'].replace(tzinfo=ZoneInfo('UTC'))
+        for schedule in schedules:
+            if schedule['schedule_weekday'] is not None:
+                next_run_utc = this_run_time_utc + timedelta(days=7)
+                _create_single_publication_job(task_data, channel_id, next_run_utc, context.application)
 
     except Exception as e:
         logger.error(f"❌ Execution failed for job {job_id}: {e}", exc_info=True)
