@@ -22,7 +22,7 @@ from telegram.ext import (
     ContextTypes,
     filters,
     ChatMemberHandler,
-    ConversationHandler, PreCheckoutQueryHandler,
+    ConversationHandler, PreCheckoutQueryHandler, TypeHandler, PicklePersistence,
 )
 from telegram.error import TelegramError, Forbidden, BadRequest
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -34,7 +34,6 @@ from psycopg2.pool import SimpleConnectionPool
 from psycopg2 import errorcodes
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
 
 load_dotenv()
 
@@ -231,8 +230,8 @@ TEXTS = {
 
         'task_channels_title': "📢 **Выбор каналов для размещения**",
         'channel_not_added': "❌ Канал не найден в вашем списке. Добавьте его через '🧩 Площадки'.",
-        'channel_removed': "🗑️ Канал удален из задания.",
-        'channel_added': "✅ Канал добавлен к заданию.",
+        'channel_removed': "🗑️ Канал удален.",
+        'channel_added': "✅ Канал добавлен.",
         'channel_is_active_info': "Канал активен",
         'channel_no_channels': "У вас пока нет добавленных каналов.",
         'channel_add_btn': "➕ Добавить канал",
@@ -2295,6 +2294,11 @@ def get_text(key: str, context: ContextTypes.DEFAULT_TYPE, lang: str = None) -> 
     return TEXTS.get(lang, {}).get(key) or TEXTS['en'].get(key, f"_{key}_")
 
 
+
+
+
+
+
 def parse_human_duration(text: str) -> Optional[float]:
     """
     Parses '30m', '12h', '1.5h', '1d' into FLOAT hours.
@@ -2727,6 +2731,40 @@ async def refresh_task_jobs(task_id: int, context: ContextTypes.DEFAULT_TYPE):
         db_query("UPDATE tasks SET status = 'inactive' WHERE id = %s", (task_id,), commit=True)
         # Optionally notify user here
 
+
+async def global_user_loader(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Middleware that loads user data from the database for EVERY update.
+    Runs before any handler to ensure context.user_data is populated.
+
+    This ensures that user language, timezone, and tariff are always available.
+    """
+    # Skip updates without a user (e.g., channel posts, edited channel posts)
+    user = update.effective_user
+    if not user or user.is_bot:
+        return
+
+    user_id = user.id
+
+    # 1. Create user in DB if they don't exist
+    if not db_query("SELECT 1 FROM users WHERE user_id = %s", (user_id,), fetchone=True):
+        create_user(
+            user_id=user_id,
+            username=user.username or "",
+            first_name=user.first_name or ""
+        )
+        logger.info(f"Created new user in global loader: {user_id}")
+
+    # 2. Load user settings into context.user_data
+    settings = get_user_settings(user_id)
+
+    # Set default values if missing
+    context.user_data['user_id'] = user_id
+    context.user_data['language_code'] = settings.get('language_code', 'en')
+    context.user_data['timezone'] = settings.get('timezone', 'Europe/Moscow')
+    context.user_data['tariff'] = settings.get('tariff', 'free')
+
+
 #
 # async def delete_pin_service_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #     msg = update.message or update.channel_post or update.edited_channel_post
@@ -2765,7 +2803,7 @@ def init_db():
                     tariff VARCHAR(50) DEFAULT 'free',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     is_active BOOLEAN DEFAULT TRUE,
-                    custom_limits JSONB DEFAULT '{}'::jsonb
+                    custom_limits JSONB DEFAULT '{}'::jsonb,
                 )
             """)
 
@@ -3001,7 +3039,6 @@ def create_user(user_id: int, username: str, first_name: str):
             first_name = EXCLUDED.first_name,
             is_active = TRUE
     """, (user_id, username, first_name), commit=True)
-
 
 def set_user_lang_tz(user_id: int, lang: str = None, tz: str = None):
     if lang:
@@ -4155,37 +4192,40 @@ async def handle_reply_keyboard(update: Update, context: ContextTypes.DEFAULT_TY
 
 # --- 1. Процесс /start ---
 
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
-    Команда /start.
-    1. Создает/обновляет юзера.
-    2. Если у юзера НЕ дефолтные настройки, показывает Главное меню.
-    3. Иначе, показывает выбор языка.
+    Handles the /start command.
+    If the user is new or lacks settings, starts the setup (lang/tz).
+    If the user is existing, skips setup and goes directly to the main menu.
     """
     user = update.effective_user
-    if not user:
+    if user.is_bot:
         return ConversationHandler.END
 
-    create_user(user.id, user.username, user.first_name)
-    # Загружаем настройки. get_user_settings вернет дефолтные из БД (en/Moscow) или сохраненные.
-    await load_user_settings(user.id, context)
+    logger.info(f"User {user.id} called /start. Username: {user.username}")
 
-    user_lang = context.user_data.get('language_code')
-    user_tz = context.user_data.get('timezone')
+    # Check if user data is loaded and complete (thanks to global_user_loader middleware)
+    user_loaded = context.user_data.get('user_id') == user.id
+    lang_set = context.user_data.get('language_code')
+    tz_set = context.user_data.get('timezone')
 
-    # Проверяем, отличаются ли настройки от дефолтных
-    # (дефолтные в init_db: 'en' и 'Europe/Moscow')
-    if user_lang != 'en' or user_tz != 'Europe/Moscow':
-        # Если юзер уже что-то выбирал (не дефолт), сразу показываем меню
-        return await show_main_menu(update, context)
-    else:
-        # Если у юзера дефолтные настройки (либо он новый,
-        # либо выбрал en/Moscow), показываем выбор языка.
-        await update.message.reply_text(
-            TEXTS['ru']['welcome_lang'],  # Показываем на RU, чтобы дать выбор
-            reply_markup=lang_keyboard()
-        )
-        return START_SELECT_LANG
+    # If the user is fully set up, skip initialization and go to main menu
+    if user_loaded and lang_set and tz_set:
+        logger.info(f"Existing user {user.id} resumed conversation, skipping setup.")
+        # Send the Main Menu immediately
+        await nav_main_menu(update, context)
+        return MAIN_MENU
+
+    # If the user is new or setup is incomplete, proceed with initialization
+
+    # Check if a payload was sent (e.g., /start boss_panel)
+    if context.args and context.args[0] == 'boss_panel':
+        # Bypass setup and check boss rights
+        return await nav_boss(update, context)
+
+    # Begin standard setup flow
+    await start_select_lang(update, context)
+    return START_SELECT_LANG
 
 
 async def start_select_lang(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4744,7 +4784,7 @@ async def boss_signature(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ])
 
     # Use HTML parse mode - now it will work because examples are escaped
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML', disable_web_page_preview=True)
 
     return BOSS_SIGNATURE_EDIT
 
@@ -4778,7 +4818,7 @@ async def boss_signature_receive(update: Update, context: ContextTypes.DEFAULT_T
     keyboard = [[InlineKeyboardButton(get_text('boss_back_to_boss', context), callback_data="nav_boss")]]
 
     # Use HTML parse mode so the saved signature displays correctly
-    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML', disable_web_page_preview=True)
 
     return BOSS_PANEL
 
@@ -4837,7 +4877,8 @@ async def boss_signature_delete(update: Update, context: ContextTypes.DEFAULT_TY
         chat_id=query.message.chat_id,
         text=menu_text,
         reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode='HTML'
+        parse_mode='HTML',
+        disable_web_page_preview=True
     )
 
     return BOSS_SIGNATURE_EDIT
@@ -7892,7 +7933,7 @@ def get_next_weekday_including_today(base: datetime, target_weekday: int) -> dat
 async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
     """
     EXECUTOR: Publishes post, schedules post-actions, and NOTIFIES ADVERTISER/CREATOR.
-    Updated to support deleting Media Groups (Albums).
+    Handles True Forwarding and Signature appending for Free users.
     """
     bot = context.bot
     job_id = context.job.data.get('job_id')
@@ -7924,52 +7965,111 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
     posted_message_id = None
     all_posted_ids = []
 
+    # Track the actual message object to apply signature later
+    sent_msg_object = None
+
     try:
-        # 3. PUBLISHING
-        if media_group_json:
-            # Handle Media Group (Album)
-            media_data = media_group_json if isinstance(media_group_json, dict) else json.loads(media_group_json)
-            input_media = []
-            caption_to_use = media_data.get('caption')
+        # --- 3. PUBLISHING LOGIC ---
 
-            for i, f in enumerate(media_data['files']):
-                media_obj = None
-                # Create InputMedia objects based on type
-                if f['type'] == 'photo':
-                    media_obj = InputMediaPhoto(media=f['media'], caption=caption_to_use if i == 0 else None)
-                elif f['type'] == 'video':
-                    media_obj = InputMediaVideo(media=f['media'], caption=caption_to_use if i == 0 else None)
-                elif f['type'] == 'document':
-                    media_obj = InputMediaDocument(media=f['media'], caption=caption_to_use if i == 0 else None)
-                elif f['type'] == 'audio':
-                    media_obj = InputMediaAudio(media=f['media'], caption=caption_to_use if i == 0 else None)
+        # Check if this is a "Repost" (Forward) or "From Bot"
+        is_repost = task_data.get('post_type') == 'repost'
 
-                if media_obj:
-                    input_media.append(media_obj)
-
-            if input_media:
-                sent_msgs = await bot.send_media_group(chat_id=channel_id, media=input_media,
-                                                       disable_notification=api_disable_notification)
-
-                # --- NEW: Capture ALL message IDs from the album ---
-                all_posted_ids = [msg.message_id for msg in sent_msgs]
-                posted_message_id = sent_msgs[0].message_id  # Keep first one for pinning/reference
-        else:
-            # Handle Single Message
-            sent_msg = await bot.copy_message(chat_id=channel_id, from_chat_id=content_chat_id,
-                                              message_id=content_message_id,
-                                              disable_notification=api_disable_notification)
+        # LOGIC A: True Forwarding (Single Message)
+        # Note: Albums cannot be truly forwarded easily without storing all original message IDs.
+        # We default to From Bot behavior for albums to ensure they stay grouped.
+        if is_repost and not media_group_json:
+            sent_msg = await bot.forward_message(
+                chat_id=channel_id,
+                from_chat_id=content_chat_id,
+                message_id=content_message_id,
+                disable_notification=api_disable_notification
+            )
             posted_message_id = sent_msg.message_id
             all_posted_ids = [posted_message_id]
+            sent_msg_object = sent_msg
+
+        # LOGIC B: From Bot (Copy) OR Album
+        else:
+            if media_group_json:
+                # Handle Media Group (Album)
+                media_data = media_group_json if isinstance(media_group_json, dict) else json.loads(media_group_json)
+                input_media = []
+                caption_to_use = media_data.get('caption')
+
+                for i, f in enumerate(media_data['files']):
+                    media_obj = None
+                    if f['type'] == 'photo':
+                        media_obj = InputMediaPhoto(media=f['media'], caption=caption_to_use if i == 0 else None)
+                    elif f['type'] == 'video':
+                        media_obj = InputMediaVideo(media=f['media'], caption=caption_to_use if i == 0 else None)
+                    elif f['type'] == 'document':
+                        media_obj = InputMediaDocument(media=f['media'], caption=caption_to_use if i == 0 else None)
+                    elif f['type'] == 'audio':
+                        media_obj = InputMediaAudio(media=f['media'], caption=caption_to_use if i == 0 else None)
+
+                    if media_obj:
+                        input_media.append(media_obj)
+
+                if input_media:
+                    sent_msgs = await bot.send_media_group(chat_id=channel_id, media=input_media,
+                                                           disable_notification=api_disable_notification)
+
+                    all_posted_ids = [msg.message_id for msg in sent_msgs]
+                    posted_message_id = sent_msgs[0].message_id
+                    sent_msg_object = sent_msgs[0]  # Keep reference to first item for signature
+            else:
+                # Handle Single Message Copy (From Bot)
+                sent_msg = await bot.copy_message(chat_id=channel_id, from_chat_id=content_chat_id,
+                                                  message_id=content_message_id,
+                                                  disable_notification=api_disable_notification)
+                posted_message_id = sent_msg.message_id
+                all_posted_ids = [posted_message_id]
+                sent_msg_object = sent_msg
 
         logger.info(f"✅ Published successfully. Main Msg ID: {posted_message_id}, Total Msgs: {len(all_posted_ids)}")
+
+        # --- 3.5 APPLY SIGNATURE (For FREE users + From Bot only) ---
+        # We do this AFTER posting by editing the message.
+        # This ensures the signature is applied to the final output.
+        if not is_repost:  # Signatures cannot be applied to Forwards
+            user_settings = get_user_settings(task_data['user_id'])
+            if user_settings.get('tariff') == 'free':
+                # Fetch signature
+                sig_row = db_query("SELECT signature FROM bot_settings WHERE id = 1", fetchone=True)
+                if sig_row and sig_row.get('signature'):
+                    signature = f"\n\n{sig_row['signature']}"
+
+                    try:
+                        # Case 1: Text Message
+                        if sent_msg_object.text:
+                            new_text = (sent_msg_object.text + signature)[:4096]
+                            await bot.edit_message_text(
+                                chat_id=channel_id,
+                                message_id=posted_message_id,
+                                text=new_text,
+                                parse_mode=ParseMode.HTML  # Assuming sig might have HTML
+                            )
+
+                        # Case 2: Media with Caption (or empty caption)
+                        elif sent_msg_object.caption is not None or (
+                                sent_msg_object.photo or sent_msg_object.video or sent_msg_object.document):
+                            current_caption = sent_msg_object.caption or ""
+                            new_caption = (current_caption + signature)[:1024]
+                            await bot.edit_message_caption(
+                                chat_id=channel_id,
+                                message_id=posted_message_id,
+                                caption=new_caption,
+                                parse_mode=ParseMode.HTML
+                            )
+                    except Exception as e:
+                        logger.warning(f"⚠️ Could not apply signature to job {job_id}: {e}")
 
         # 4. PINNING
         pin_duration = float(job_data['pin_duration'] or 0)
 
         if pin_duration > 0 and posted_message_id:
             try:
-                # We pin the first message (Telegram usually pins the whole album contextually)
+                # We pin the first message
                 await bot.pin_chat_message(chat_id=channel_id, message_id=posted_message_id,
                                            disable_notification=api_disable_notification)
                 unpin_time = datetime.now(ZoneInfo('UTC')) + timedelta(hours=pin_duration)
@@ -7988,11 +8088,11 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
             del_time = datetime.now(ZoneInfo('UTC')) + timedelta(hours=delete_hours)
             context.application.job_queue.run_once(execute_delete_job, when=del_time,
                                                    data={'channel_id': channel_id,
-                                                         'message_id': posted_message_id,  # Fallback ID
+                                                         'message_id': posted_message_id,
                                                          'job_id': job_id},
                                                    name=f"del_{job_id}_{posted_message_id}")
 
-        # 6. UPDATE STATUS (Save all IDs to JSONB column)
+        # 6. UPDATE STATUS
         ids_json = json.dumps(all_posted_ids)
 
         db_query(
@@ -8005,14 +8105,13 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
         ch_title = ch_info.get('channel_title', str(channel_id)) if ch_info else str(channel_id)
         current_time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-        # 7. NOTIFY ADVERTISER (Task 1)
+        # 7. NOTIFY ADVERTISER
         if job_data['advertiser_user_id']:
             try:
                 adv_id = job_data['advertiser_user_id']
                 adv_settings = get_user_settings(adv_id)
                 adv_lang = adv_settings.get('language_code', 'en')
 
-                # Localized report for advertiser
                 report_text = get_text('advertiser_report_template', context, lang=adv_lang).format(
                     channel_title=ch_title,
                     task_title=task_data.get('task_name'),
@@ -8039,9 +8138,8 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                 )
 
                 await bot.send_message(chat_id=creator_id, text=user_report, parse_mode='Markdown')
-                logger.info(f"Report sent to creator {creator_id}")
             except Exception as e:
-                logger.error(f"Failed to report to task creator {task_data['user_id']}: {e}")
+                logger.error(f"Failed to report to task creator: {e}")
 
         # 9. SCHEDULE NEXT RECURRENCE
         schedules = get_task_schedules(task_data['id'])
@@ -8255,7 +8353,7 @@ async def my_chat_member_handler(update: Update, context: ContextTypes.DEFAULT_T
 
             # Success logic
             try:
-                text = local_get_text('channel_added').format(title=chat.title)
+                text = local_get_text('channel_added_success').format(title=chat.title)
                 await context.bot.send_message(chat_id=user.id, text=text)
             except (TelegramError, Forbidden):
                 logger.warning(f"Could not notify user {user.id}")
@@ -8434,33 +8532,33 @@ def main():
     async def post_init(app: Application):
         await restore_active_tasks(app)
 
+    persistence = PicklePersistence(filepath="bot_persistence_data")
+
     application = (
         Application.builder()
         .token(BOT_TOKEN)
+        .persistence(persistence)
         .post_init(post_init)
         .build()
     )
 
-    # --- ConversationHandler ---
 
-    # --- ИЗМЕНЕНИЕ: ДОБАВЛЯЕМ MessageHandler ВО ВСЕ СОСТОЯНИЯ,
-    #     ГДЕ НЕТ ДРУГОГО ОБРАБОТЧИКА ТЕКСТА ---
+    # Common handler for reply keyboard buttons (TEXT messages that are not commands)
     reply_button_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, handle_reply_keyboard)
 
     all_states = {
         # --- Процесс /start ---
         START_SELECT_LANG: [
             CallbackQueryHandler(start_select_lang, pattern="^lang_"),
-            reply_button_handler  # <--- ДОБАВЛЕНО
+            reply_button_handler
         ],
         START_SELECT_TZ: [
             CallbackQueryHandler(start_select_timezone, pattern="^tz_"),
-            reply_button_handler  # <--- ДОБАВЛЕНО
+            reply_button_handler
         ],
 
         # --- Главное меню ---
         MAIN_MENU: [
-            # Этот обработчик УЖЕ ЗДЕСЬ, все верно
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_reply_keyboard),
             CallbackQueryHandler(task_constructor_entrypoint, pattern="^nav_new_task$"),
             CallbackQueryHandler(nav_my_tasks, pattern="^nav_my_tasks$"),
@@ -8473,7 +8571,7 @@ def main():
             CallbackQueryHandler(nav_boss, pattern="^nav_boss$"),
         ],
 
-        # --- Экраны меню (возврат в главное) ---
+        # --- Экраны меню ---
         MY_TASKS: [
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
             CallbackQueryHandler(task_constructor_entrypoint, pattern="^nav_new_task$"),
@@ -8485,20 +8583,20 @@ def main():
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
             CallbackQueryHandler(channel_manage_menu, pattern="^channel_manage_"),
             CallbackQueryHandler(channel_delete_confirm, pattern="^channel_delete_"),
-            reply_button_handler  # <--- ДОБАВЛЕНО
+            reply_button_handler
         ],
         FREE_DATES: [
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
-            reply_button_handler  # <--- ДОБАВЛЕНО
+            reply_button_handler
         ],
         TARIFF: [
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
             CallbackQueryHandler(tariff_buy_select, pattern="^tariff_buy_"),
-            reply_button_handler  # <--- ДОБАВЛЕНО
+            reply_button_handler
         ],
         REPORTS: [
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
-            reply_button_handler  # <--- ДОБАВЛЕНО
+            reply_button_handler
         ],
         BOSS_PANEL: [
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
@@ -8508,24 +8606,22 @@ def main():
             CallbackQueryHandler(boss_users, pattern="^boss_users$"),
             CallbackQueryHandler(boss_stats, pattern="^boss_stats$"),
             CallbackQueryHandler(boss_ban_start, pattern="^boss_ban$"),
-            CallbackQueryHandler(boss_grant_start, pattern="^boss_grant$"),  # NEW
+            CallbackQueryHandler(boss_grant_start, pattern="^boss_grant$"),
             CallbackQueryHandler(boss_money, pattern="^boss_money$"),
             CallbackQueryHandler(boss_logs, pattern="^boss_logs$"),
             reply_button_handler
         ],
 
+        # --- Boss Sub-states ---
         BOSS_GRANT_TARIFF: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, boss_grant_receive_input),
             CallbackQueryHandler(nav_boss, pattern="^nav_boss$"),
         ],
-
         BOSS_GRANT_CONFIRM: [
             CallbackQueryHandler(boss_grant_confirm_yes, pattern="^boss_grant_confirm_yes$"),
             CallbackQueryHandler(nav_boss, pattern="^nav_boss$"),
             reply_button_handler
         ],
-
-        # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
         BOSS_BAN_SELECT_USER: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, boss_ban_receive_user),
             CallbackQueryHandler(nav_boss, pattern="^nav_boss$"),
@@ -8534,16 +8630,12 @@ def main():
             CallbackQueryHandler(boss_ban_confirm_yes, pattern="^boss_ban_confirm_yes$"),
             CallbackQueryHandler(boss_unban_confirm_yes, pattern="^boss_unban_confirm_yes$"),
             CallbackQueryHandler(nav_boss, pattern="^nav_boss$"),
-            reply_button_handler  # <--- ДОБАВЛЕНО
+            reply_button_handler
         ],
-
-        # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
         BOSS_MAILING_MESSAGE: [
             MessageHandler(filters.ALL & ~filters.COMMAND, boss_mailing_receive_message),
             CallbackQueryHandler(nav_boss, pattern="^nav_boss$"),
         ],
-
-        # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
         BOSS_MAILING_EXCLUDE: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, boss_mailing_exclude),
             CallbackQueryHandler(boss_mailing_skip_exclude, pattern="^boss_mailing_skip_exclude$"),
@@ -8552,10 +8644,8 @@ def main():
         BOSS_MAILING_CONFIRM: [
             CallbackQueryHandler(boss_mailing_send, pattern="^boss_mailing_send$"),
             CallbackQueryHandler(nav_boss, pattern="^nav_boss$"),
-            reply_button_handler  # <--- ДОБАВЛЕНО
+            reply_button_handler
         ],
-
-        # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
         BOSS_SIGNATURE_EDIT: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, boss_signature_receive),
             CallbackQueryHandler(boss_signature_delete, pattern="^boss_signature_delete$"),
@@ -8565,7 +8655,7 @@ def main():
         # --- Конструктор Задач ---
         TASK_CONSTRUCTOR: [
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
-            CallbackQueryHandler(nav_my_tasks, pattern="^nav_my_tasks$"),  # FIX TASK 3
+            CallbackQueryHandler(nav_my_tasks, pattern="^nav_my_tasks$"),
             CallbackQueryHandler(task_activate, pattern="^task_activate$"),
             CallbackQueryHandler(task_ask_name, pattern="^task_set_name$"),
             CallbackQueryHandler(task_ask_message, pattern="^task_set_message$"),
@@ -8581,22 +8671,18 @@ def main():
             CallbackQueryHandler(task_set_post_type, pattern="^task_set_post_type$"),
             CallbackQueryHandler(task_delete, pattern="^task_delete$"),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
-            # Для возврата из ошибок валидации
-            reply_button_handler  # <--- ДОБАВЛЕНО
+            reply_button_handler
         ],
 
         # --- Вложенные состояния конструктора ---
-
-        # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
         TASK_SET_NAME: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, task_receive_name),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
         ],
-        # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
         TASK_SET_MESSAGE: [
             MessageHandler(filters.ALL & ~filters.COMMAND, task_receive_message),
-            CallbackQueryHandler(task_delete_message, pattern="^task_delete_message$"),  # <-- ДОБАВЛЕНО
+            CallbackQueryHandler(task_delete_message, pattern="^task_delete_message$"),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
         ],
@@ -8604,22 +8690,16 @@ def main():
             CallbackQueryHandler(task_toggle_channel, pattern="^channel_toggle_"),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
-            reply_button_handler  # <--- ДОБАВЛЕНО
+            reply_button_handler
         ],
-        # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
         TASK_SET_ADVERTISER: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, task_receive_advertiser),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
         ],
-        # --- НЕ ДОБАВЛЯЕМ т.к. есть MessageHandler ---
         TASK_SET_CUSTOM_TIME: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, time_receive_custom),
-
-            # --- FIX: Handler for the Back button ---
             CallbackQueryHandler(task_select_time, pattern="^task_select_time$"),
-            # ----------------------------------------
-
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
         ],
@@ -8629,10 +8709,9 @@ def main():
             CallbackQueryHandler(calendar_navigation, pattern="^calendar_prev$"),
             CallbackQueryHandler(calendar_navigation, pattern="^calendar_next$"),
             CallbackQueryHandler(calendar_day_select, pattern="^calendar_day_"),
-            CallbackQueryHandler(calendar_weekday_select, pattern="^calendar_wd_"),  # <-- ДОБАВЛЕНО
-            CallbackQueryHandler(calendar_ignore_past, pattern="^calendar_ignore_past$"),  # <-- ДОБАВЛЕНО
+            CallbackQueryHandler(calendar_weekday_select, pattern="^calendar_wd_"),
+            CallbackQueryHandler(calendar_ignore_past, pattern="^calendar_ignore_past$"),
             CallbackQueryHandler(calendar_select_all, pattern="^calendar_select_all$"),
-            # <-- УДАЛЕНО (или закомментировано)
             CallbackQueryHandler(calendar_reset, pattern="^calendar_reset$"),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
@@ -8644,42 +8723,33 @@ def main():
             CallbackQueryHandler(time_clear, pattern="^time_clear$"),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
-            reply_button_handler  # <--- ДОБАВЛЕНО
+            reply_button_handler
         ],
 
         # --- Настройки закрепления и удаления ---
         TASK_SET_PIN: [
-            # 🔴 CHANGED: Added \d+ to strictly match numbers (e.g., pin_12), ignoring pin_custom
             CallbackQueryHandler(pin_duration_select, pattern=r"^pin_\d+$"),
-
-            # This handles the custom button specifically
             CallbackQueryHandler(pin_custom, pattern="^pin_custom$"),
-
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
             reply_button_handler
         ],
         TASK_SET_PIN_CUSTOM: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, pin_receive_custom),
-            CallbackQueryHandler(task_set_pin, pattern="^task_set_pin$"),  # Back to presets
+            CallbackQueryHandler(task_set_pin, pattern="^task_set_pin$"),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
         ],
         TASK_SET_DELETE: [
-            # 🔴 CHANGED: Added \d+ to strictly match numbers (e.g., delete_24), ignoring delete_custom
             CallbackQueryHandler(delete_duration_select, pattern=r"^delete_\d+$"),
-
-            # This handles the custom button specifically
             CallbackQueryHandler(delete_custom, pattern="^delete_custom$"),
-
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
             reply_button_handler
         ],
-        # --- NEW STATE BLOCK ---
         TASK_SET_DELETE_CUSTOM: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, delete_receive_custom),
-            CallbackQueryHandler(task_set_delete, pattern="^task_set_delete$"),  # Back to presets
+            CallbackQueryHandler(task_set_delete, pattern="^task_set_delete$"),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
         ],
@@ -8688,34 +8758,35 @@ def main():
             CallbackQueryHandler(task_delete_confirm_no, pattern="^task_delete_confirm_no$"),
             CallbackQueryHandler(task_back_to_constructor, pattern="^task_back_to_constructor$"),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
-            reply_button_handler  # <--- ДОБАВЛЕНО
+            reply_button_handler
         ],
     }
-    # ... (rest of the main() function is unchanged) ...
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start_command)],
+        entry_points=[
+            CommandHandler("start", start_command),
+        ],
         states=all_states,
         fallbacks=[
             CommandHandler("cancel", cancel),
             CallbackQueryHandler(nav_main_menu, pattern="^nav_main_menu$"),
         ],
-        allow_reentry=True
+        persistent=True,
+        name="main_conversation"
     )
 
-    # application.add_handler(
-    #     MessageHandler(filters.StatusUpdate.PINNED_MESSAGE, delete_pin_service_message),
-    #     group=0
-    # )
-
     application.add_handler(conv_handler)
+
+    application.add_handler(MessageHandler(filters.ALL, global_user_loader), group=-1) # Run first
+    application.add_handler(CallbackQueryHandler(global_user_loader), group=-1) # Run first
+
     application.add_handler(CommandHandler("jobs", debug_jobs))
 
-    # --- НОВЫЕ ОБРАБОТЧИКИ ПЛАТЕЖЕЙ ---
+    # --- Payment Handlers ---
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
-    # --- КОНЕЦ НОВОГО БЛОКА ---
 
+    # --- Chat Member Handler (Adding/Removing bot) ---
     application.add_handler(ChatMemberHandler(
         my_chat_member_handler,
         ChatMemberHandler.MY_CHAT_MEMBER
@@ -8734,10 +8805,9 @@ def main():
         replace_existing=True
     )
 
-    # NEW: Schedule daily cleanup of past dates
     scheduler.add_job(
         cleanup_past_schedules,
-        CronTrigger(hour=0, minute=5, timezone='UTC'),  # Run 5 minutes after midnight
+        CronTrigger(hour=0, minute=5, timezone='UTC'),
         id='cleanup_past_schedules',
         name='Daily cleanup of past schedule dates',
         replace_existing=True
@@ -8745,10 +8815,8 @@ def main():
 
     scheduler.start()
 
-    logger.info("✅ Scheduled daily cleanup job for inactive tasks")
-
-    # Then start receiving updates
-    application.run_polling()
+    logger.info("✅ Scheduled daily cleanup jobs")
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
