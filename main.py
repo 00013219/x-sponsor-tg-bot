@@ -12,7 +12,7 @@ import asyncio
 import math
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, ReplyKeyboardMarkup, KeyboardButton, \
-    InputMediaPhoto, InputMediaVideo, InputMediaAudio, InputMediaDocument
+    InputMediaPhoto, InputMediaVideo, InputMediaAudio, InputMediaDocument, Message
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
@@ -8028,9 +8028,6 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
 
         logger.info(f"✅ Published successfully. Main Msg ID: {posted_message_id}, Total Msgs: {len(all_posted_ids)}")
 
-        # --- 3.5 APPLY SIGNATURE (For FREE users + From Bot only) ---
-        # We do this AFTER posting by editing the message.
-        # This ensures the signature is applied to the final output.
         if not is_repost:  # Signatures cannot be applied to Forwards
             user_settings = get_user_settings(task_data['user_id'])
             if user_settings.get('tariff') == 'free':
@@ -8040,30 +8037,118 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                     signature = f"\n\n{sig_row['signature']}"
 
                     try:
-                        # Case 1: Text Message
-                        if sent_msg_object.text:
-                            new_text = (sent_msg_object.text + signature)[:4096]
-                            await bot.edit_message_text(
-                                chat_id=channel_id,
-                                message_id=posted_message_id,
-                                text=new_text,
-                                parse_mode=ParseMode.HTML  # Assuming sig might have HTML
-                            )
+                        # Handle different types of sent objects
+                        if isinstance(sent_msg_object, Message):
+                            # Single message or first message of media group
+                            if sent_msg_object.text:
+                                new_text = (sent_msg_object.text + signature)[:4096]
+                                await bot.edit_message_text(
+                                    chat_id=channel_id,
+                                    message_id=posted_message_id,
+                                    text=new_text,
+                                    parse_mode=ParseMode.HTML,
+                                    disable_web_page_preview=True
+                                )
+                            elif sent_msg_object.caption is not None:
+                                current_caption = sent_msg_object.caption or ""
+                                new_caption = (current_caption + signature)[:1024]
+                                await bot.edit_message_caption(
+                                    chat_id=channel_id,
+                                    message_id=posted_message_id,
+                                    caption=new_caption,
+                                    parse_mode=ParseMode.HTML,
 
-                        # Case 2: Media with Caption (or empty caption)
-                        elif sent_msg_object.caption is not None or (
-                                sent_msg_object.photo or sent_msg_object.video or sent_msg_object.document):
-                            current_caption = sent_msg_object.caption or ""
-                            new_caption = (current_caption + signature)[:1024]
-                            await bot.edit_message_caption(
-                                chat_id=channel_id,
-                                message_id=posted_message_id,
-                                caption=new_caption,
-                                parse_mode=ParseMode.HTML
-                            )
+                                )
+                            else:
+                                # For media groups, the first message might not have caption
+                                # Try to get the actual message from the channel
+                                try:
+                                    # Use get_updates approach as fallback
+                                    updates = await bot.get_updates(timeout=1)
+                                    for update in updates:
+                                        if update.channel_post and update.channel_post.message_id == posted_message_id:
+                                            message_to_edit = update.channel_post
+                                            if message_to_edit.caption is not None:
+                                                current_caption = message_to_edit.caption or ""
+                                                new_caption = (current_caption + signature)[:1024]
+                                                await bot.edit_message_caption(
+                                                    chat_id=channel_id,
+                                                    message_id=posted_message_id,
+                                                    caption=new_caption,
+                                                    parse_mode=ParseMode.HTML,
+
+                                                )
+                                            break
+                                except Exception as e:
+                                    logger.warning(
+                                        f"Could not apply signature to message {posted_message_id} via get_updates: {e}")
+                        else:
+                            # For media group messages, sent_msg_object might be the first message of the group
+                            # We need to handle the case where we have multiple messages
+                            if media_group_json and all_posted_ids:
+                                # For each message in the media group, check if it has a caption
+                                for msg_id in all_posted_ids:
+                                    try:
+                                        # Try to edit each message individually
+                                        # First message (index 0) gets the caption + signature
+                                        # Other messages get no caption (or keep their existing captions)
+                                        if msg_id == posted_message_id:  # First message
+                                            media_data = media_group_json if isinstance(media_group_json,
+                                                                                        dict) else json.loads(
+                                                media_group_json)
+                                            original_caption = media_data.get('caption', '')
+                                            new_caption = (original_caption + signature)[:1024]
+
+                                            # Try to edit caption
+                                            try:
+                                                await bot.edit_message_caption(
+                                                    chat_id=channel_id,
+                                                    message_id=msg_id,
+                                                    caption=new_caption,
+                                                    parse_mode=ParseMode.HTML,
+
+                                                )
+                                            except Exception as e:
+                                                # If no caption, maybe it's a text message in the group?
+                                                # Try to edit text instead
+                                                try:
+                                                    # Get message to check if it has text
+                                                    message_check = await context.bot.get_message(chat_id=channel_id,
+                                                                                                  message_id=msg_id)
+                                                    if message_check.text:
+                                                        new_text = (message_check.text + signature)[:4096]
+                                                        await bot.edit_message_text(
+                                                            chat_id=channel_id,
+                                                            message_id=msg_id,
+                                                            text=new_text,
+                                                            parse_mode=ParseMode.HTML,
+                                                            disable_web_page_preview=True
+                                                        ),
+
+                                                except Exception:
+                                                    pass
+                                        else:
+                                            # For other messages in the group, check if they have captions
+                                            try:
+                                                message_check = await context.bot.get_message(chat_id=channel_id,
+                                                                                              message_id=msg_id)
+                                                if message_check.caption:
+                                                    # Add signature to other messages' captions too
+                                                    new_caption = (message_check.caption + signature)[:1024]
+                                                    await bot.edit_message_caption(
+                                                        chat_id=channel_id,
+                                                        message_id=msg_id,
+                                                        caption=new_caption,
+                                                        parse_mode=ParseMode.HTML,
+
+                                                    )
+                                            except Exception:
+                                                pass
+                                    except Exception as e:
+                                        logger.warning(
+                                            f"Could not apply signature to message {msg_id} in media group: {e}")
                     except Exception as e:
                         logger.warning(f"⚠️ Could not apply signature to job {job_id}: {e}")
-
         # 4. PINNING
         pin_duration = float(job_data['pin_duration'] or 0)
 
