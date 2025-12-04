@@ -16,8 +16,8 @@ from utils.cleanup import cleanup_temp_messages
 from utils.logging import logger
 
 # Character limits
-MAX_SIMPLE_MESSAGE_LENGTH = 4094
-MAX_MEDIA_CAPTION_LENGTH = 1020
+MAX_SIMPLE_MESSAGE_LENGTH = 4096
+MAX_MEDIA_CAPTION_LENGTH = 1024
 
 
 async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -233,8 +233,15 @@ async def task_delete_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     # TASK 2: Use edit (force_new_message=False)
     return await show_task_constructor(update, context, force_new_message=False)
 
+
 async def save_single_task_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Helper to save a standard single message (Refactored from original)"""
+    """
+    Helper to save a standard single message.
+    Logics:
+    1. Repost -> No Limit.
+    2. Text -> 4096 chars.
+    3. Media -> 1024 chars (API Limitation).
+    """
     user_id = update.message.from_user.id
     task_id = get_or_create_task_id(user_id, context)
 
@@ -245,32 +252,45 @@ async def save_single_task_message(update: Update, context: ContextTypes.DEFAULT
     message = update.message
     content_text = message.text or message.caption or ""
 
-    # ✅ VALIDATION: Check character limits for simple text messages
-    if message.text and len(message.text) > MAX_SIMPLE_MESSAGE_LENGTH:
-        error_msg = await update.message.reply_text(
-            get_text('error_message_too_long', context).format(
-                max_length=MAX_SIMPLE_MESSAGE_LENGTH,
-                current_length=len(message.text)
-            ),
-            parse_mode='HTML',
-            reply_markup=back_to_constructor_keyboard(context)
-        )
-        context.user_data['temp_message_ids'].append(error_msg.message_id)
-        return TASK_SET_MESSAGE
+    # --- 🚀 DETECT POST TYPE FIRST (For Logic 1) ---
+    # Check if the message is forwarded
+    is_forward = (message.forward_date is not None) or \
+                 (hasattr(message, 'forward_origin') and message.forward_origin is not None)
 
-    # ✅ VALIDATION: Check character limits for media captions
-    has_media = any([message.photo, message.video, message.document, message.audio, message.voice])
-    if has_media and message.caption and len(message.caption) > MAX_MEDIA_CAPTION_LENGTH:
-        error_msg = await update.message.reply_text(
-            get_text('error_caption_too_long', context).format(
-                max_length=MAX_MEDIA_CAPTION_LENGTH,
-                current_length=len(message.caption)
-            ),
-            parse_mode='HTML',
-            reply_markup=back_to_constructor_keyboard(context)
-        )
-        context.user_data['temp_message_ids'].append(error_msg.message_id)
-        return TASK_SET_MESSAGE
+    new_post_type = 'repost' if is_forward else 'from_bot'
+
+    # --- ✅ VALIDATION ---
+    # Мы проверяем длину только если это НЕ репост (Logic 1: Repost without limits)
+    if not is_forward:
+        has_media = any([message.photo, message.video, message.document, message.audio, message.voice])
+
+        # Logic 2: Text Only -> 4096 limit
+        if not has_media and message.text:
+            if len(message.text) > MAX_SIMPLE_MESSAGE_LENGTH:  # 4096
+                error_msg = await update.message.reply_text(
+                    get_text('error_message_too_long', context).format(
+                        max_length=MAX_SIMPLE_MESSAGE_LENGTH,
+                        current_length=len(message.text)
+                    ),
+                    parse_mode='HTML',
+                    reply_markup=back_to_constructor_keyboard(context)
+                )
+                context.user_data['temp_message_ids'].append(error_msg.message_id)
+                return TASK_SET_MESSAGE
+
+        # Logic 3: Media + Text -> 1024 limit (Telegram API constraint for captions)
+        if has_media and message.caption:
+            if len(message.caption) > MAX_MEDIA_CAPTION_LENGTH:  # 1024
+                error_msg = await update.message.reply_text(
+                    get_text('error_caption_too_long', context).format(
+                        max_length=MAX_MEDIA_CAPTION_LENGTH,
+                        current_length=len(message.caption)
+                    ),
+                    parse_mode='HTML',
+                    reply_markup=back_to_constructor_keyboard(context)
+                )
+                context.user_data['temp_message_ids'].append(error_msg.message_id)
+                return TASK_SET_MESSAGE
 
     # ... [Existing Snippet Generation Code] ...
     if not content_text:
@@ -299,26 +319,17 @@ async def save_single_task_message(update: Update, context: ContextTypes.DEFAULT
         new_name = snippet[:200] if snippet else "New Task"
         await update_task_field(task_id, 'task_name', new_name, context)
 
-    # --- 🚀 NEW LOGIC START: Auto-detect Post Type ---
-    # Check if the message is forwarded
-    # We check forward_date (legacy/standard) or forward_origin (new API)
-    is_forward = (message.forward_date is not None) or \
-                 (hasattr(message, 'forward_origin') and message.forward_origin is not None)
-
-    new_post_type = 'repost' if is_forward else 'from_bot'
-
-    # Update the post_type in the database
+    # Save Post Type
     await update_task_field(task_id, 'post_type', new_post_type, context)
-    # --- 🚀 NEW LOGIC END ---
 
-    # Save to DB (Clear media_group_data if switching to single message)
+    # Save to DB
     content_message_id = message.message_id
     content_chat_id = message.chat_id
 
     await update_task_field(task_id, 'content_message_id', content_message_id, context)
     await update_task_field(task_id, 'content_chat_id', content_chat_id, context)
 
-    # Directly update fields that update_task_field doesn't handle specifically
+    # Directly update fields
     db_query("UPDATE tasks SET message_snippet = %s, media_group_data = NULL WHERE id = %s",
              (snippet, task_id), commit=True)
 
@@ -326,24 +337,31 @@ async def save_single_task_message(update: Update, context: ContextTypes.DEFAULT
     await send_task_preview(user_id, task_id, context, is_group=False)
     return TASK_SET_MESSAGE
 
+
 async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
     """
     Job that runs after a short delay to process a buffered media group.
-    Enhanced: Properly tracks all messages for cleanup.
+
+    Logic:
+    1. Collects all messages associated with the media_group_id.
+    2. Detects if it is a Repost (Forward).
+    3. If Repost -> No character limit validation.
+    4. If Fresh Post -> Validates caption <= 1024 chars (Telegram API limit).
+    5. Saves to DB and triggers preview.
     """
     job = context.job
     job_data = job.data
     media_group_id = job_data['media_group_id']
 
-    # User ID is now attached to the job itself because we passed it in run_once
+    # User ID passed via job arguments
     user_id = job.user_id
 
     # Safety check
     if not context.user_data:
-        logger.error(f"context.user_data is None for job {job.name}. Ensure user_id was passed to run_once.")
+        logger.error(f"context.user_data is None for job {job.name}.")
         return
 
-    # Initialize temp_message_ids if not exists
+    # Initialize temp_message_ids if not exists (for error handling)
     if 'temp_message_ids' not in context.user_data:
         context.user_data['temp_message_ids'] = []
 
@@ -364,12 +382,20 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
 
     task_id = get_or_create_task_id(user_id, context)
 
-    # Extract data
+    # --- 🚀 DETECT POST TYPE FIRST ---
+    # Check if the first message in the group is a forward
+    first_msg = messages[0]
+    is_forward = (first_msg.forward_date is not None) or \
+                 (hasattr(first_msg, 'forward_origin') and first_msg.forward_origin is not None)
+
+    new_post_type = 'repost' if is_forward else 'from_bot'
+
+    # Extract Media Data & Caption
     media_list = []
     caption = ""
 
     for msg in messages:
-        # Capture caption from the first message that has one
+        # Capture caption from the first message that has one (Telegram usually puts it on the first)
         if msg.caption and not caption:
             caption = msg.caption
 
@@ -396,20 +422,24 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
                 'has_spoiler': msg.has_media_spoiler if hasattr(msg, 'has_media_spoiler') else False
             })
 
-    # ✅ VALIDATION: Check caption length for media groups
-    if caption and len(caption) > MAX_MEDIA_CAPTION_LENGTH:
-        # Send error message to user
-        error_msg = await context.bot.send_message(
-            chat_id=user_id,
-            text=get_text('error_mediagroup_caption_too_long', context).format(
-                max_length=MAX_MEDIA_CAPTION_LENGTH,
-                current_length=len(caption)
-            ),
-            parse_mode='HTML',
-            reply_markup=back_to_constructor_keyboard(context)
-        )
-        context.user_data['temp_message_ids'].append(error_msg.message_id)
-        return
+    # --- ✅ VALIDATION ---
+    # Logic 4: Check caption length only if it is NOT a repost.
+    # Reposts are allowed to exceed limits as they are forwarded "as is".
+    # Fresh media posts cannot have captions > 1024 chars due to API limits.
+    if not is_forward:
+        if caption and len(caption) > MAX_MEDIA_CAPTION_LENGTH:
+            # Send error message to user
+            error_msg = await context.bot.send_message(
+                chat_id=user_id,
+                text=get_text('error_mediagroup_caption_too_long', context).format(
+                    max_length=MAX_MEDIA_CAPTION_LENGTH,
+                    current_length=len(caption)
+                ),
+                parse_mode='HTML',
+                reply_markup=back_to_constructor_keyboard(context)
+            )
+            context.user_data['temp_message_ids'].append(error_msg.message_id)
+            return
 
     # Prepare JSON data
     media_group_data = {
@@ -425,7 +455,7 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
             short_caption += "..."
         snippet = f"📸 {short_caption}"
     else:
-        snippet = "📸"
+        snippet = "📸 Media Group"
 
     # Set Task Name if empty
     task = get_task_details(task_id)
@@ -433,14 +463,11 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
         new_name = snippet[:200]
         await update_task_field(task_id, 'task_name', new_name, context)
 
-    # Auto-detect Post Type
-    first_msg = messages[0]
-    is_forward = (first_msg.forward_date is not None) or \
-                 (hasattr(first_msg, 'forward_origin') and first_msg.forward_origin is not None)
-    new_post_type = 'repost' if is_forward else 'from_bot'
+    # Save Post Type
     await update_task_field(task_id, 'post_type', new_post_type, context)
 
     # Save to DB
+    # We save the ID of the first message in the group for reference/copying
     first_msg_id = messages[0].message_id
     chat_id = messages[0].chat_id
     json_data = json.dumps(media_group_data)
@@ -454,7 +481,7 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
         commit=True
     )
 
-    # Trigger UI update - this will now properly track all messages
+    # Trigger UI update
     await send_task_preview(user_id, task_id, context, is_group=True, media_data=media_group_data)
 
 async def send_task_preview(user_id, task_id, context, is_group=False, media_data=None):

@@ -7,6 +7,7 @@ from database.connection import db_query
 from database.queries.schedules import get_task_schedules
 from database.queries.task_channels import get_task_channels
 from database.queries.tasks import get_task_details
+from services.publication_service import create_single_publication_job
 from utils.logging import logger
 
 
