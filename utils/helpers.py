@@ -97,14 +97,15 @@ async def send_or_edit_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 
-def determine_task_status_color(task_id: int) -> str:
+def determine_task_status_color(task_id: int, context: ContextTypes[ContextTypes.DEFAULT_TYPE], ) -> str:
     """
     UPDATED Logic:
     🟢 Green: Has future scheduled posts
     🟡 Yellow: No future posts, but has posts waiting for auto-deletion
     🔴 Red: All posts are done (published and either deleted or no auto-delete)
     """
-    now_utc = datetime.now(ZoneInfo('UTC'))
+    user_tz_db = context.user_data.get("timezone", "UTC")
+    now_utc = datetime.now(ZoneInfo(user_tz_db))
 
     # 1. Check for FUTURE schedules
     future_scheduled = db_query("""

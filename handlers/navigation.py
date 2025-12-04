@@ -156,7 +156,7 @@ async def nav_my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         list_text = get_text('my_tasks_empty', context)
     else:
         for task in tasks:
-            icon = determine_task_status_color(task['id'])
+            icon = determine_task_status_color(task['id'], context)
 
             # Определяем текстовый статус для списка
             if icon == '🟢':

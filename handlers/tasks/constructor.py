@@ -169,7 +169,7 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
 
     # --- DETERMINE STATUS (Traffic Light Logic) ---
     status_label = get_text('task_status_label', context)
-    status_icon = determine_task_status_color(task_id)
+    status_icon = determine_task_status_color(context, task_id)
 
     if status_icon == '🟢':
         status_val = f"🟢 {get_text('status_text_active', context)}"
