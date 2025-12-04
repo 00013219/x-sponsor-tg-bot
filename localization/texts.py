@@ -393,6 +393,9 @@ ID: {user_id}
         'error_message_too_long': "❌ <b>Ошибка:</b> Текст сообщения слишком длинный!\n\nМаксимальная длина: <b>{max_length}</b> символов\nВаше сообщение: <b>{current_length}</b> символов\n\nПожалуйста, сократите текст и попробуйте снова.",
         'error_caption_too_long': "❌ <b>Ошибка:</b> Подпись к медиа слишком длинная!\n\nМаксимальная длина: <b>{max_length}</b> символов\nВаша подпись: <b>{current_length}</b> символов\n\nПожалуйста, сократите подпись и попробуйте снова.",
         'error_mediagroup_caption_too_long': "❌ <b>Ошибка:</b> Подпись к медиагруппе слишком длинная!\n\nМаксимальная длина: <b>{max_length}</b> символов\nВаша подпись: <b>{current_length}</b> символов\n\nПожалуйста, сократите подпись и попробуйте снова.",
+        "error_select_dates": "⚠️ Ошибка: выберите даты или дни недели",
+        "error_time_passed": "❌ Выбранные дата и время уже прошли",
+        "task_not_found": "Задача не найдена",
     },
     'en': {
         'welcome_lang': """🤖 Welcome to XSponsorBot!
@@ -788,6 +791,9 @@ Confirm?
         'error_message_too_long': "❌ <b>Error:</b> Message text is too long!\n\nMaximum length: <b>{max_length}</b> characters\nYour message: <b>{current_length}</b> characters\n\nPlease shorten the text and try again.",
         'error_caption_too_long': "❌ <b>Error:</b> Media caption is too long!\n\nMaximum length: <b>{max_length}</b> characters\nYour caption: <b>{current_length}</b> characters\n\nPlease shorten the caption and try again.",
         'error_mediagroup_caption_too_long': "❌ <b>Error:</b> Media group caption is too long!\n\nMaximum length: <b>{max_length}</b> characters\nYour caption: <b>{current_length}</b> characters\n\nPlease shorten the caption and try again.",
+        "error_select_dates": "⚠️ Error: Select dates or weekdays",
+        "error_time_passed": "❌ The selected date & time has already passed",
+        "task_not_found": "Task not found",
     },
     'es': {
         'welcome_lang': """🤖 ¡Bienvenido a XSponsorBot!
@@ -1176,6 +1182,9 @@ Nueva Tarifa: **{new_tariff}**
         'error_message_too_long': "❌ <b>Error:</b> ¡El texto del mensaje es demasiado largo!\n\nLongitud máxima: <b>{max_length}</b> caracteres\nTu mensaje: <b>{current_length}</b> caracteres\n\nPor favor, acorta el texto e inténtalo de nuevo.",
         'error_caption_too_long': "❌ <b>Error:</b> ¡El pie de foto del media es demasiado largo!\n\nLongitud máxima: <b>{max_length}</b> caracteres\nTu pie de foto: <b>{current_length}</b> caracteres\n\nPor favor, acorta el pie de foto e inténtalo de nuevo.",
         'error_mediagroup_caption_too_long': "❌ <b>Error:</b> ¡El pie de foto del grupo de medios es demasiado largo!\n\nLongitud máxima: <b>{max_length}</b> caracteres\nTu pie de foto: <b>{current_length}</b> caracteres\n\nPor favor, acorta el pie de foto e inténtalo de nuevo.",
+        "error_select_dates": "⚠️ Error: Seleccione fechas o días de la semana",
+        "error_time_passed": "❌ La fecha y hora seleccionadas ya han pasado",
+        "task_not_found": "Tarea no encontrada",
     },
     'fr': {
         'welcome_lang': """🤖 Bienvenue sur XSponsorBot!
@@ -1564,6 +1573,9 @@ Confirmer ?
         'error_message_too_long': "❌ <b>Erreur :</b> Le texte du message est trop long !\n\nLongueur maximale : <b>{max_length}</b> caractères\nVotre message : <b>{current_length}</b> caractères\n\nVeuillez raccourcir le texte et réessayer.",
         'error_caption_too_long': "❌ <b>Erreur :</b> La légende du média est trop longue !\n\nLongueur maximale : <b>{max_length}</b> caractères\nVotre légende : <b>{current_length}</b> caractères\n\nVeuillez raccourcir la légende et réessayer.",
         'error_mediagroup_caption_too_long': "❌ <b>Erreur :</b> La légende du groupe de médias est trop longue !\n\nLongueur maximale : <b>{max_length}</b> caractères\nVotre légende : <b>{current_length}</b> caractères\n\nVeuillez raccourcir la légende et réessayer.",
+        "error_select_dates": "⚠️ Erreur : sélectionnez des dates ou des jours de la semaine",
+        "error_time_passed": "❌ La date et l’heure sélectionnées sont déjà passées",
+        "task_not_found": "Tâche introuvable",
     },
     'ua': {
         'welcome_lang': """🤖 Ласкаво просимо до XSponsorBot!
@@ -1952,6 +1964,9 @@ ID користувача: {user_id}
         'error_message_too_long': "❌ <b>Помилка:</b> Текст повідомлення занадто довгий!\n\nМаксимальна довжина: <b>{max_length}</b> символів\nВаше повідомлення: <b>{current_length}</b> символів\n\nБудь ласка, скоротіть текст і спробуйте знову.",
         'error_caption_too_long': "❌ <b>Помилка:</b> Підпис до медіа занадто довгий!\n\nМаксимальна довжина: <b>{max_length}</b> символів\nВаш підпис: <b>{current_length}</b> символів\n\nБудь ласка, скоротіть підпис і спробуйте знову.",
         'error_mediagroup_caption_too_long': "❌ <b>Помилка:</b> Підпис до медіагрупи занадто довгий!\n\nМаксимальна довжина: <b>{max_length}</b> символів\nВаш підпис: <b>{current_length}</b> символів\n\nБудь ласка, скоротіть підпис і спробуйте знову.",
+        "error_select_dates": "⚠️ Помилка: виберіть дати або дні тижня",
+        "error_time_passed": "❌ Обрана дата й час уже минули",
+        "task_not_found": "Завдання не знайдено",
     },
     'de': {
         'welcome_lang': """🤖 Willkommen beim XSponsorBot!
@@ -2339,6 +2354,9 @@ Bestätigen?
         'error_message_too_long': "❌ <b>Fehler:</b> Nachrichtentext ist zu lang!\n\nMaximale Länge: <b>{max_length}</b> Zeichen\nIhre Nachricht: <b>{current_length}</b> Zeichen\n\nBitte kürzen Sie den Text und versuchen Sie es erneut.",
         'error_caption_too_long': "❌ <b>Fehler:</b> Medienbildunterschrift ist zu lang!\n\nMaximale Länge: <b>{max_length}</b> Zeichen\nIhre Bildunterschrift: <b>{current_length}</b> Zeichen\n\nBitte kürzen Sie die Bildunterschrift und versuchen Sie es erneut.",
         'error_mediagroup_caption_too_long': "❌ <b>Fehler:</b> Mediengruppenbildunterschrift ist zu lang!\n\nMaximale Länge: <b>{max_length}</b> Zeichen\nIhre Bildunterschrift: <b>{current_length}</b> Zeichen\n\nBitte kürzen Sie die Bildunterschrift und versuchen Sie es erneut.",
+        "error_select_dates": "⚠️ Fehler: Wählen Sie Daten oder Wochentage aus",
+        "error_time_passed": "❌ Das ausgewählte Datum und die Uhrzeit sind bereits vergangen",
+        "task_not_found": "Aufgabe nicht gefunden",
 
     }
 }

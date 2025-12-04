@@ -1,4 +1,6 @@
+from datetime import datetime
 from typing import Optional, Any
+from zoneinfo import ZoneInfo
 
 from telegram.ext import ContextTypes
 from database.connection import db_query
@@ -30,41 +32,50 @@ def get_or_create_task_id(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> O
 
 
 def validate_task(task_id: int, context: ContextTypes.DEFAULT_TYPE) -> tuple[bool, str]:
-    """
-    Validates if a task has all required fields to be Active.
-    UPDATED: Allows weekdays without specific dates.
-    """
     task = get_task_details(task_id)
     if not task:
-        return False, "Task not found"
+        return False, get_text('task_not_found', context)
 
-    # 1. Check Message
+    # 1. Message
     if not task.get('content_message_id'):
         return False, get_text('task_error_no_message', context)
 
-    # 2. Check Channels
+    # 2. Channels
     channels = get_task_channels(task_id)
     if not channels:
         return False, get_text('task_error_no_channels', context)
 
-    # 3. Check Schedule (UPDATED: Accept either dates OR weekdays)
+    # 3. Schedules
     schedules = get_task_schedules(task_id)
-
     if not schedules:
         return False, get_text('task_error_no_schedule', context)
 
-    # Must have at least one date OR one weekday
     has_date = any(s.get('schedule_date') is not None for s in schedules)
     has_weekday = any(s.get('schedule_weekday') is not None for s in schedules)
     has_time = any(s.get('schedule_time') is not None for s in schedules)
 
     if not has_date and not has_weekday:
-        return False, "⚠️ Error: Select dates or weekdays"
+        return False, get_text('error_select_dates', context)
 
     if not has_time:
         return False, get_text('task_error_no_schedule', context)
 
+    # --- NEW VALIDATION: Reject past datetimes ---
+    now_utc = datetime.now(ZoneInfo("UTC"))
+
+    for s in schedules:
+        sd = s.get('schedule_date')   # date
+        st = s.get('schedule_time')   # time
+
+        if sd is not None and st is not None:
+            # Build full datetime
+            scheduled_dt = datetime.combine(sd, st, tzinfo=ZoneInfo("UTC"))
+
+            if scheduled_dt < now_utc:
+                return False, get_text('error_time_passed', context)
+
     return True, ""
+
 
 async def refresh_task_jobs(task_id: int, context: ContextTypes.DEFAULT_TYPE):
     """
