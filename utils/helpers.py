@@ -97,7 +97,7 @@ async def send_or_edit_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 
-def determine_task_status_color(task_id: int, context: ContextTypes[ContextTypes.DEFAULT_TYPE], ) -> str:
+def determine_task_status_color(task_id: int, context: ContextTypes.DEFAULT_TYPE) -> str:
     """
     UPDATED Logic:
     🟢 Green: Has future scheduled posts
