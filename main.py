@@ -76,14 +76,11 @@ def main():
         await restore_active_tasks(app)
 
     # Используем абсолютный путь для persistence (FILE, не директория)
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    persistence_file = os.path.join(BASE_DIR, "bot_persistence_data")
-    
-    # Убедиться, что это файл, не директория
-    if os.path.isdir(persistence_file):
-        import shutil
-        shutil.rmtree(persistence_file)
-    
+    PERSISTENCE_DIR = "/app/persistence"
+    os.makedirs(PERSISTENCE_DIR, exist_ok=True)
+
+    persistence_file = os.path.join(PERSISTENCE_DIR, "state.pkl")
+
     persistence = PicklePersistence(filepath=persistence_file)
     logger.info(f"Bot persistence file: {persistence_file}")
 
