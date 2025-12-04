@@ -71,8 +71,10 @@ def validate_task(task_id: int, context: ContextTypes.DEFAULT_TYPE) -> tuple[boo
     user_tz_str = context.user_data.get("timezone", "UTC")
     try:
         tz_info = ZoneInfo(user_tz_str)
-    except Exception:
+    except Exception as e:
         tz_info = ZoneInfo("UTC")
+        logger.info(f"error: {e}")
+        
 
     now_user = datetime.now(tz_info)
 
