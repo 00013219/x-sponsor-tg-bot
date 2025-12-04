@@ -33,9 +33,13 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
     """
     payment_info = update.message.successful_payment
     payload = payment_info.invoice_payload  # 'tariff_buy_pro1_user_12345'
+    telegram_charge_id = payment_info.telegram_payment_charge_id
     user_id = update.effective_user.id
 
-    logger.info(f"Успешный платеж от {user_id}. Payload: {payload}")
+    logger.info(
+        f"Успешный платеж от {user_id}. Payload: {payload}. "
+        f"Telegram payment charge ID: {telegram_charge_id}"
+    )
 
     try:
         # --- Динамическая обработка payload ---

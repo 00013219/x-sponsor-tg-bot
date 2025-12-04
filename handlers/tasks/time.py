@@ -328,6 +328,14 @@ async def time_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # UI Update Logic
     user_tz = context.user_data.get('timezone', 'Europe/Moscow')
+    try:
+        user_tz_obj = ZoneInfo(user_tz)
+    except ZoneInfoNotFoundError:
+        user_tz_obj = ZoneInfo('UTC')
+        user_tz_str = 'UTC (Default)'
+
+    current_time_str = datetime.now(user_tz_obj).strftime('%H:%M')
+
     user_tariff = context.user_data.get('tariff', 'free')
 
     limits = get_tariff_limits(user_tariff)
@@ -335,6 +343,7 @@ async def time_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = get_text('time_selection_title', context)
     text += f"\n{get_text('time_tz_info', context).format(timezone=user_tz)}"
+    text += f"\n🕒 **{get_text('time_current_info', context).format(current_time=current_time_str)}**"
     text += f"\n{get_text('time_slots_limit', context).format(slots=max_slots)} (Тариф: {limits['name']})"
     text += f"\n{get_text('time_selected_slots', context).format(count=0, slots=max_slots)}"
 
