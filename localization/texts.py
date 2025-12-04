@@ -390,7 +390,9 @@ ID: {user_id}
         'boss_grant_success': '✅ Тариф **{tariff_name}** выдан @{username} (ID: {user_id})',
         'boss_grant_confirm_yes': '✅ Да, выдать',
         'boss_grant_confirm_no': '❌ Нет, отмена',
-
+        'error_message_too_long': "❌ <b>Ошибка:</b> Текст сообщения слишком длинный!\n\nМаксимальная длина: <b>{max_length}</b> символов\nВаше сообщение: <b>{current_length}</b> символов\n\nПожалуйста, сократите текст и попробуйте снова.",
+        'error_caption_too_long': "❌ <b>Ошибка:</b> Подпись к медиа слишком длинная!\n\nМаксимальная длина: <b>{max_length}</b> символов\nВаша подпись: <b>{current_length}</b> символов\n\nПожалуйста, сократите подпись и попробуйте снова.",
+        'error_mediagroup_caption_too_long': "❌ <b>Ошибка:</b> Подпись к медиагруппе слишком длинная!\n\nМаксимальная длина: <b>{max_length}</b> символов\nВаша подпись: <b>{current_length}</b> символов\n\nПожалуйста, сократите подпись и попробуйте снова.",
     },
     'en': {
         'welcome_lang': """🤖 Welcome to XSponsorBot!
@@ -783,23 +785,9 @@ Confirm?
         'boss_grant_success': '✅ Tariff **{tariff_name}** granted to @{username} (ID: {user_id})',
         'boss_grant_confirm_yes': '✅ Yes, grant',
         'boss_grant_confirm_no': '❌ No, cancel',
-
-        # --- Added missing keys ---
-        'task_error_no_name_or_message': "⚠️ Name or Message should be provided first",
-        'post_published_in_channel': "✅ Post published\n📢 {channel_title}\n📝 {task_name}",
-        'task_message_preview_footer': 'The message will be published as shown above ⬆️',
-        'days_alert_text': "\n\nThere are only {count_to_add} days left this month, but your limit is {max_slots}.",
-        'selected_time': '✅ Selected:',
-        'calendar_select_all_btn': '📅 The Whole Month',
-        'calendar_ignore_past': 'There are no dates left for the future this month.',
-        'no_name': "No Name",
-        'no_username': "No Username",
-        'what_you_wanna_do': "What do you want to do?",
-        'advertiser_will_be_notified': "📢 Advertiser @{username} will be notified about the publications",
-        'channel_occupied_error': "⚠️ This channel is already added by another user.",
-        'advertiser_notification': "🔔 You have been set as the advertiser for task: **{task_name}** (ID: {task_id})",
-        'advertiser_report_template': "✅ **The task is completed!**\n\n📢 Channel: **{channel_title}**\n📝 Task: {task_title}\n⏰ Time: {time}",
-        'task_report_msg': "🔔 **Task #{task_data} report**\n",
+        'error_message_too_long': "❌ <b>Error:</b> Message text is too long!\n\nMaximum length: <b>{max_length}</b> characters\nYour message: <b>{current_length}</b> characters\n\nPlease shorten the text and try again.",
+        'error_caption_too_long': "❌ <b>Error:</b> Media caption is too long!\n\nMaximum length: <b>{max_length}</b> characters\nYour caption: <b>{current_length}</b> characters\n\nPlease shorten the caption and try again.",
+        'error_mediagroup_caption_too_long': "❌ <b>Error:</b> Media group caption is too long!\n\nMaximum length: <b>{max_length}</b> characters\nYour caption: <b>{current_length}</b> characters\n\nPlease shorten the caption and try again.",
     },
     'es': {
         'welcome_lang': """🤖 ¡Bienvenido a XSponsorBot!
@@ -1185,6 +1173,9 @@ Nueva Tarifa: **{new_tariff}**
         'boss_grant_confirm_yes': '✅ Sí, otorgar',
         'boss_grant_confirm_no': '❌ No, cancelar',
         'tariff_success_template': "✅ ¡Has recibido una nueva tarifa!\n\nLa tarifa **{tariff_name}** está activada.",
+        'error_message_too_long': "❌ <b>Error:</b> ¡El texto del mensaje es demasiado largo!\n\nLongitud máxima: <b>{max_length}</b> caracteres\nTu mensaje: <b>{current_length}</b> caracteres\n\nPor favor, acorta el texto e inténtalo de nuevo.",
+        'error_caption_too_long': "❌ <b>Error:</b> ¡El pie de foto del media es demasiado largo!\n\nLongitud máxima: <b>{max_length}</b> caracteres\nTu pie de foto: <b>{current_length}</b> caracteres\n\nPor favor, acorta el pie de foto e inténtalo de nuevo.",
+        'error_mediagroup_caption_too_long': "❌ <b>Error:</b> ¡El pie de foto del grupo de medios es demasiado largo!\n\nLongitud máxima: <b>{max_length}</b> caracteres\nTu pie de foto: <b>{current_length}</b> caracteres\n\nPor favor, acorta el pie de foto e inténtalo de nuevo.",
     },
     'fr': {
         'welcome_lang': """🤖 Bienvenue sur XSponsorBot!
@@ -1570,6 +1561,9 @@ Confirmer ?
         'boss_grant_confirm_no': '❌ Non, annuler',
         'tariff_success_template': "✅ Vous avez reçu un nouvel abonnement !\n\nL'abonnement **{tariff_name}** est activé.",
         'task_error_no_name_or_message': "⚠️ Un Nom ou un Message doit être fourni en premier",
+        'error_message_too_long': "❌ <b>Erreur :</b> Le texte du message est trop long !\n\nLongueur maximale : <b>{max_length}</b> caractères\nVotre message : <b>{current_length}</b> caractères\n\nVeuillez raccourcir le texte et réessayer.",
+        'error_caption_too_long': "❌ <b>Erreur :</b> La légende du média est trop longue !\n\nLongueur maximale : <b>{max_length}</b> caractères\nVotre légende : <b>{current_length}</b> caractères\n\nVeuillez raccourcir la légende et réessayer.",
+        'error_mediagroup_caption_too_long': "❌ <b>Erreur :</b> La légende du groupe de médias est trop longue !\n\nLongueur maximale : <b>{max_length}</b> caractères\nVotre légende : <b>{current_length}</b> caractères\n\nVeuillez raccourcir la légende et réessayer.",
     },
     'ua': {
         'welcome_lang': """🤖 Ласкаво просимо до XSponsorBot!
@@ -1955,6 +1949,9 @@ ID користувача: {user_id}
         'boss_grant_confirm_no': '❌ Ні, скасувати',
         'tariff_success_template': "✅ Ви отримали новий тариф!\n\nТариф **{tariff_name}** активовано.",
         'task_error_no_name_or_message': "⚠️ Спочатку необхідно вказати Назву або Повідомлення",
+        'error_message_too_long': "❌ <b>Помилка:</b> Текст повідомлення занадто довгий!\n\nМаксимальна довжина: <b>{max_length}</b> символів\nВаше повідомлення: <b>{current_length}</b> символів\n\nБудь ласка, скоротіть текст і спробуйте знову.",
+        'error_caption_too_long': "❌ <b>Помилка:</b> Підпис до медіа занадто довгий!\n\nМаксимальна довжина: <b>{max_length}</b> символів\nВаш підпис: <b>{current_length}</b> символів\n\nБудь ласка, скоротіть підпис і спробуйте знову.",
+        'error_mediagroup_caption_too_long': "❌ <b>Помилка:</b> Підпис до медіагрупи занадто довгий!\n\nМаксимальна довжина: <b>{max_length}</b> символів\nВаш підпис: <b>{current_length}</b> символів\n\nБудь ласка, скоротіть підпис і спробуйте знову.",
     },
     'de': {
         'welcome_lang': """🤖 Willkommen beim XSponsorBot!
@@ -2339,5 +2336,9 @@ Bestätigen?
         'boss_grant_confirm_no': '❌ Nein, abbrechen',
         'tariff_success_template': "✅ Sie haben einen neuen Tarif erhalten!\n\nDer Tarif **{tariff_name}** ist aktiviert.",
         'task_error_no_name_or_message': "⚠️ Zuerst sollte ein Name oder eine Nachricht angegeben werden",
+        'error_message_too_long': "❌ <b>Fehler:</b> Nachrichtentext ist zu lang!\n\nMaximale Länge: <b>{max_length}</b> Zeichen\nIhre Nachricht: <b>{current_length}</b> Zeichen\n\nBitte kürzen Sie den Text und versuchen Sie es erneut.",
+        'error_caption_too_long': "❌ <b>Fehler:</b> Medienbildunterschrift ist zu lang!\n\nMaximale Länge: <b>{max_length}</b> Zeichen\nIhre Bildunterschrift: <b>{current_length}</b> Zeichen\n\nBitte kürzen Sie die Bildunterschrift und versuchen Sie es erneut.",
+        'error_mediagroup_caption_too_long': "❌ <b>Fehler:</b> Mediengruppenbildunterschrift ist zu lang!\n\nMaximale Länge: <b>{max_length}</b> Zeichen\nIhre Bildunterschrift: <b>{current_length}</b> Zeichen\n\nBitte kürzen Sie die Bildunterschrift und versuchen Sie es erneut.",
+
     }
 }

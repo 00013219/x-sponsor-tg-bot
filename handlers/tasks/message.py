@@ -15,6 +15,10 @@ from states.conversation import TASK_SET_MESSAGE, TASK_CONSTRUCTOR
 from utils.cleanup import cleanup_temp_messages
 from utils.logging import logger
 
+# Character limits
+MAX_SIMPLE_MESSAGE_LENGTH = 4094
+MAX_MEDIA_CAPTION_LENGTH = 1020
+
 
 async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Нажата кнопка '📝 Сообщение'"""
@@ -241,6 +245,33 @@ async def save_single_task_message(update: Update, context: ContextTypes.DEFAULT
     message = update.message
     content_text = message.text or message.caption or ""
 
+    # ✅ VALIDATION: Check character limits for simple text messages
+    if message.text and len(message.text) > MAX_SIMPLE_MESSAGE_LENGTH:
+        error_msg = await update.message.reply_text(
+            get_text('error_message_too_long', context).format(
+                max_length=MAX_SIMPLE_MESSAGE_LENGTH,
+                current_length=len(message.text)
+            ),
+            parse_mode='HTML',
+            reply_markup=back_to_constructor_keyboard(context)
+        )
+        context.user_data['temp_message_ids'].append(error_msg.message_id)
+        return TASK_SET_MESSAGE
+
+    # ✅ VALIDATION: Check character limits for media captions
+    has_media = any([message.photo, message.video, message.document, message.audio, message.voice])
+    if has_media and message.caption and len(message.caption) > MAX_MEDIA_CAPTION_LENGTH:
+        error_msg = await update.message.reply_text(
+            get_text('error_caption_too_long', context).format(
+                max_length=MAX_MEDIA_CAPTION_LENGTH,
+                current_length=len(message.caption)
+            ),
+            parse_mode='HTML',
+            reply_markup=back_to_constructor_keyboard(context)
+        )
+        context.user_data['temp_message_ids'].append(error_msg.message_id)
+        return TASK_SET_MESSAGE
+
     # ... [Existing Snippet Generation Code] ...
     if not content_text:
         if message.photo:
@@ -364,6 +395,21 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
                 'media': file_id,
                 'has_spoiler': msg.has_media_spoiler if hasattr(msg, 'has_media_spoiler') else False
             })
+
+    # ✅ VALIDATION: Check caption length for media groups
+    if caption and len(caption) > MAX_MEDIA_CAPTION_LENGTH:
+        # Send error message to user
+        error_msg = await context.bot.send_message(
+            chat_id=user_id,
+            text=get_text('error_mediagroup_caption_too_long', context).format(
+                max_length=MAX_MEDIA_CAPTION_LENGTH,
+                current_length=len(caption)
+            ),
+            parse_mode='HTML',
+            reply_markup=back_to_constructor_keyboard(context)
+        )
+        context.user_data['temp_message_ids'].append(error_msg.message_id)
+        return
 
     # Prepare JSON data
     media_group_data = {
@@ -511,18 +557,3 @@ async def send_task_preview(user_id, task_id, context, is_group=False, media_dat
 
     # Track the confirmation message as well
     context.user_data['temp_message_ids'].append(confirmation_msg.message_id)
-
-
-# async def delete_pin_service_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-#     msg = update.message or update.channel_post or update.edited_channel_post
-#     if not msg:
-#         return
-#
-#     if not msg.pinned_message:
-#         return
-#
-#     try:
-#         await msg.delete()
-#         logger.info("Deleted pin service message")
-#     except Exception as e:
-#         logger.warning(f"Failed to delete pin service message: {e}")
