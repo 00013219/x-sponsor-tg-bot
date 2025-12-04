@@ -68,13 +68,15 @@ def validate_task(task_id: int, context: ContextTypes.DEFAULT_TYPE) -> tuple[boo
 
     # 4. Past Date Check
     # Ensure we use ZoneInfo for proper timezone aware comparison
-    user_tz_str = context.user_data.get("timezone", "UTC")
+    settings = get_user_settings(context.user_data.get('user_id'))
+
+    user_tz_str = settings.get('timezone', 'Europe/Moscow')
     try:
         tz_info = ZoneInfo(user_tz_str)
     except Exception as e:
         tz_info = ZoneInfo("UTC")
         logger.info(f"error: {e}")
-        
+
 
     now_user = datetime.now(tz_info)
 
