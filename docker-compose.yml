@@ -1,0 +1,80 @@
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: xsb_db
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-xsb_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5433}:5432" # external 5433 -> internal 5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - xsb_network
+
+  # Python Telegram Bot
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: xsb_bot
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      OWNER_ID: ${OWNER_ID}
+      DATABASE_URL: ${DATABASE_URL}
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: 5432 # inside container DB works on 5432
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-xsb_db}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+      - bot_persistence:/bot_persistence_data
+    networks:
+      - xsb_network
+    restart: unless-stopped
+
+  # Database Backup Service (runs daily backup)
+  backup:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: xsb_backup
+    environment:
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-xsb_db}
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+      BACKUP_COMPRESSION: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - backups:/backups
+    networks:
+      - xsb_network
+    command: sh -c "pip install --quiet psycopg2-binary && python scripts/backup_db.py backup"
+    # Run backup once per day at 2 AM UTC
+    # For scheduling, use a separate cron container or orchestration tool
+
+volumes:
+  postgres_data:
+  bot_persistence:
+  backups:
+
+networks:
+  xsb_network:
+    driver: bridge

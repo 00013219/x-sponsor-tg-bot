@@ -1,0 +1,67 @@
+(
+    # --- Главные экраны ---
+    MAIN_MENU,
+    MY_TASKS,
+    MY_CHANNELS,
+    FREE_DATES,
+    TARIFF,
+    REPORTS,
+    BOSS_PANEL,
+
+    # --- Процесс /start ---
+    START_SELECT_LANG,
+    START_SELECT_TZ,
+
+    # --- Конструктор Задач ---
+    TASK_CONSTRUCTOR,
+    TASK_SET_NAME,
+    TASK_SELECT_CHANNELS,
+    TASK_SET_MESSAGE,
+    TASK_SELECT_CALENDAR,
+    TASK_SELECT_TIME,
+    TASK_SET_PIN,
+    TASK_SET_PIN_NOTIFY,
+    TASK_SET_DELETE,
+    TASK_SET_REPORT,
+    TASK_SET_ADVERTISER,
+    TASK_SET_POST_TYPE,
+    TASK_SET_CUSTOM_TIME,
+
+    # --- Календарь и Время ---
+    CALENDAR_VIEW,
+    TIME_SELECTION,
+
+    # --- Админка ---
+    BOSS_MAILING,
+    BOSS_STATS,
+    BOSS_USERS,
+    BOSS_LIMITS,
+    BOSS_TARIFFS,
+    BOSS_BAN,
+    BOSS_MONEY,
+    BOSS_LOGS,
+
+    # --- Boss Panel Extended ---
+    BOSS_MAILING_CREATE,
+    BOSS_MAILING_MESSAGE,
+    BOSS_MAILING_EXCLUDE,
+    BOSS_MAILING_CONFIRM,
+    BOSS_SIGNATURE_EDIT,
+    BOSS_USERS_LIST,
+    BOSS_STATS_VIEW,
+    BOSS_LIMITS_SELECT_USER,
+    BOSS_LIMITS_SET_VALUE,
+    BOSS_TARIFFS_EDIT,
+    BOSS_BAN_SELECT_USER,
+    BOSS_BAN_CONFIRM,
+    BOSS_MONEY_VIEW,
+    BOSS_LOGS_VIEW,
+    BOSS_GRANT_TARIFF,
+    BOSS_GRANT_CONFIRM,
+
+    # --- НОВОЕ СОСТОЯНИЕ ---
+    TASK_SET_PIN_CUSTOM,
+    TASK_SET_DELETE_CUSTOM,
+    TASK_DELETE_CONFIRM
+
+) = range(51)
