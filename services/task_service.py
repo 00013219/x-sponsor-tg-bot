@@ -60,18 +60,25 @@ def validate_task(task_id: int, context: ContextTypes.DEFAULT_TYPE) -> tuple[boo
     if not has_time:
         return False, get_text('task_error_no_schedule', context)
 
-    # --- NEW VALIDATION: Reject past datetimes ---
-    now_utc = datetime.now(ZoneInfo("UTC"))
+    user_tz_db = context.user_data.get("timezone", "UTC")
+
+    # --- NEW VALIDATION: Use USER TIMEZONE ---
+    user_tz = ZoneInfo(user_tz_db)   # ← YOUR FUNCTION
+    now_user = datetime.now(user_tz)
 
     for s in schedules:
         sd = s.get('schedule_date')   # date
         st = s.get('schedule_time')   # time
 
         if sd is not None and st is not None:
-            # Build full datetime
-            scheduled_dt = datetime.combine(sd, st, tzinfo=ZoneInfo("UTC"))
+            # Convert naive sd + st into a timezone-aware datetime
+            scheduled_dt = datetime(
+                sd.year, sd.month, sd.day,
+                st.hour, st.minute, st.second,
+                tzinfo=user_tz
+            )
 
-            if scheduled_dt < now_utc:
+            if scheduled_dt < now_user:
                 return False, get_text('error_time_passed', context)
 
     return True, ""

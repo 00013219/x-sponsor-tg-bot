@@ -20,26 +20,60 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     if user.is_bot:
         return ConversationHandler.END
 
-    logger.info(f"User {user.id} called /start. Username: {user.username}")
+    user_id = user.id
+    logger.info(f"User {user_id} called /start. Username: {user.username}")
 
+    # If user opens /start with argument "boss_panel"
     if context.args and context.args[0] == 'boss_panel':
         return await nav_boss(update, context)
 
-    # Check settings loaded by global_user_loader
-    lang_set = context.user_data.get('language_code')
-    tz_set = context.user_data.get('timezone')
+    # --- Step 1: Check if user exists (middleware no longer creates them) ---
+    from database.connection import db_query
+    from database.queries.users import create_user
+    from database.queries.settings import get_user_settings
 
-    # If settings are missing (None), FORCE setup
+    def db_check_user():
+        return db_query("SELECT 1 FROM users WHERE user_id = %s", (user_id,), fetchone=True)
+
+    def db_create_user():
+        create_user(
+            user_id=user_id,
+            username=user.username or "",
+            first_name=user.first_name or ""
+        )
+
+    def db_get_settings():
+        return get_user_settings(user_id)
+
+    user_exists = await asyncio.to_thread(db_check_user)
+
+    # --- Step 2: Create user only on /start ---
+    if not user_exists:
+        await asyncio.to_thread(db_create_user)
+        logger.info(f"Created new user via /start: {user_id}")
+
+    # --- Step 3: Load settings ---
+    settings = await asyncio.to_thread(db_get_settings)
+
+    # Update context.user_data
+    context.user_data['user_id'] = user_id
+    context.user_data['language_code'] = settings.get('language_code')
+    context.user_data['timezone'] = settings.get('timezone')
+    context.user_data['tariff'] = settings.get('tariff', 'free')
+
+    # --- Step 4: Language & timezone setup if missing ---
+    lang_set = settings.get("language_code")
+    tz_set = settings.get("timezone")
+
     if not lang_set or not tz_set:
-        logger.info(f"New or unconfigured user {user.id}. Starting setup.")
-
-        # Use a safe fallback for text
+        logger.info(f"New or unconfigured user {user_id}. Starting setup.")
         text = TEXTS.get('ru', {}).get('welcome_lang', "Select Language:")
-
         await update.message.reply_text(text, reply_markup=lang_keyboard())
         return START_SELECT_LANG
 
+    # --- Step 5: Normal flow ---
     return await show_main_menu(update, context)
+
 
 async def start_select_lang(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
