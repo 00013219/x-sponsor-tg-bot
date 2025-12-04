@@ -31,21 +31,26 @@ def get_or_create_task_id(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> O
     return new_task_id
 
 
+# --- Helper Function ---
 def validate_task(task_id: int, context: ContextTypes.DEFAULT_TYPE) -> tuple[bool, str]:
+    """
+    Validates if a task is ready for activation.
+    Returns: (is_valid, error_message)
+    """
     task = get_task_details(task_id)
     if not task:
         return False, get_text('task_not_found', context)
 
-    # 1. Message
+    # 1. Message Check
     if not task.get('content_message_id'):
         return False, get_text('task_error_no_message', context)
 
-    # 2. Channels
+    # 2. Channels Check
     channels = get_task_channels(task_id)
     if not channels:
         return False, get_text('task_error_no_channels', context)
 
-    # 3. Schedules
+    # 3. Schedule Check
     schedules = get_task_schedules(task_id)
     if not schedules:
         return False, get_text('task_error_no_schedule', context)
@@ -54,25 +59,34 @@ def validate_task(task_id: int, context: ContextTypes.DEFAULT_TYPE) -> tuple[boo
     has_weekday = any(s.get('schedule_weekday') is not None for s in schedules)
     has_time = any(s.get('schedule_time') is not None for s in schedules)
 
+    # Logic: Must have Time AND (Date OR Weekday)
     if not has_date and not has_weekday:
         return False, get_text('error_select_dates', context)
 
     if not has_time:
         return False, get_text('task_error_no_schedule', context)
 
-    user_tz = context.user_data.get("timezone", "UTC")
-    now_user = datetime.now(ZoneInfo(user_tz))
+    # 4. Past Date Check
+    # Ensure we use ZoneInfo for proper timezone aware comparison
+    user_tz_str = context.user_data.get("timezone", "UTC")
+    try:
+        tz_info = ZoneInfo(user_tz_str)
+    except Exception:
+        tz_info = ZoneInfo("UTC")
+
+    now_user = datetime.now(tz_info)
 
     for s in schedules:
-        sd = s.get('schedule_date')   # date
-        st = s.get('schedule_time')   # time
+        sd = s.get('schedule_date')  # date object
+        st = s.get('schedule_time')  # time object
 
+        # Only check specific dates (weekdays repeat, so they might be valid next week)
         if sd is not None and st is not None:
-            # Convert naive sd + st into a timezone-aware datetime
+            # Combine date and time, attaching the user's timezone
             scheduled_dt = datetime(
                 sd.year, sd.month, sd.day,
                 st.hour, st.minute, st.second,
-                tzinfo=user_tz
+                tzinfo=tz_info
             )
 
             if scheduled_dt < now_user:
@@ -90,33 +104,45 @@ async def refresh_task_jobs(task_id: int, context: ContextTypes.DEFAULT_TYPE):
     """
     # 1. Check Status
     task = get_task_details(task_id)
-    if not task or task['status'] != 'active':
-        # Stop here if we are just creating the task (Constraint: do not auto activate while creating)
+    if not task or task.get('status') != 'active':
+        # Constraint: Do not auto-activate drafts or non-existent tasks
         return
 
     logger.info(f"🔄 Hot-reloading active task {task_id} due to parameter change...")
 
     # 2. Cancel OLD jobs
-    # (Constraint: previous task should be cancelled and not published)
+    # Constraint: Previous schedule must be wiped before creating new ones
     await cancel_task_jobs(task_id, context)
 
     # 3. Validate New State
+    # We pass context so validation can check User Timezone vs Current Time
     is_valid, error = validate_task(task_id, context)
 
     if is_valid:
         # 4. Create NEW jobs
-        # (Constraint: the one with new parameters should be published)
+        # Constraint: The updated parameters are applied immediately
+        # We fetch settings explicitly to ensure we have the DB timezone,
+        # though context.user_data is usually fine if called from an interaction.
         user_settings = get_user_settings(task['user_id'])
         user_tz = user_settings.get('timezone', 'Europe/Moscow')
 
-        count = create_publication_jobs_for_task(task_id, user_tz, context.application)
-        logger.info(f"✅ Task {task_id} hot-reloaded. Scheduled {count} jobs.")
-    else:
-        # If the edit made the task invalid (e.g. removed all times), force deactivate
+        try:
+            count = create_publication_jobs_for_task(task_id, user_tz, context.application)
+            logger.info(f"✅ Task {task_id} hot-reloaded. Scheduled {count} jobs.")
+        except Exception as e:
+            logger.error(f"❌ Scheduler failed for task {task_id}: {e}")
+            # Fallback to invalid handling if scheduling crashes
+            is_valid = False
+            error = "Internal Scheduler Error"
+
+    # Handle Invalid State (Logic moved outside else block to catch scheduler errors too)
+    if not is_valid:
         logger.warning(f"⚠️ Task {task_id} invalid after edit. Deactivating. Reason: {error}")
-        # We use db_query directly to avoid infinite recursion with update_task_field
+
+        # A. Force Deactivate in DB
+        # We use direct SQL to prevent infinite recursion loop:
+        # update_task_field -> trigger_refresh -> fail -> update_task_field...
         db_query("UPDATE tasks SET status = 'inactive' WHERE id = %s", (task_id,), commit=True)
-        # Optionally notify user here
 
 
 async def update_task_field(task_id: int, field: str, value: Any, context: ContextTypes.DEFAULT_TYPE):

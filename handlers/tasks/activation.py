@@ -2,9 +2,6 @@ from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 
 from database.queries.publications import cancel_task_jobs
-from database.queries.schedules import get_task_schedules
-from database.queries.task_channels import get_task_channels
-from database.queries.tasks import get_task_details
 from handlers.tasks.constructor import show_task_constructor
 from jobs.scheduler import create_publication_jobs_for_task
 from keyboards.task_constructor import back_to_main_menu_keyboard, back_to_constructor_keyboard
@@ -14,43 +11,50 @@ from states.conversation import TASK_CONSTRUCTOR, MAIN_MENU
 from utils.logging import logger
 
 
+# --- Main Handler ---
 async def task_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Активация задачи: Валидация -> Очистка старых -> Создание новых -> Уведомление"""
     query = update.callback_query
     await query.answer(get_text('task_activating_spinner', context))
 
     task_id = context.user_data.get('current_task_id')
-    if not task_id:
-        await query.edit_message_text(
-            get_text('task_not_found_error', context),
-            reply_markup=back_to_main_menu_keyboard(context)
-        )
-        return MAIN_MENU
 
-    # --- 1. Validation using shared function ---
-    is_valid, error_text = validate_task(task_id, context)
+    # --- 1. Validation (Using the helper) ---
+    is_valid, error_msg = validate_task(task_id, context)
+
     if not is_valid:
+        # Construct the error message UI
+        header = get_text('task_validation_header', context)
+        # Combine header and specific error message
+        full_error_text = f"{header}\n\n❌ {error_msg}"
+
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor"),
             InlineKeyboardButton(get_text('home_main_menu_btn', context), callback_data="nav_main_menu")
         ]])
-        await query.edit_message_text(
-            get_text('task_validation_header', context) + f"\n\n{error_text}",
-            reply_markup=keyboard
-        )
+
+        await query.edit_message_text(full_error_text, reply_markup=keyboard)
         return TASK_CONSTRUCTOR
 
     # --- 2. Activation ---
+    # Update DB status
     await update_task_field(task_id, 'status', 'active', context)
+
+    # Clean up any old scheduler jobs for this task
     await cancel_task_jobs(task_id, context)
 
     user_tz = context.user_data.get('timezone', 'Europe/Moscow')
+
     try:
+        # Create new scheduler jobs
         job_count = create_publication_jobs_for_task(task_id, user_tz, context.application)
         logger.info(f"Task {task_id} activated. Jobs created: {job_count}")
+
     except Exception as e:
         logger.error(f"Error creating jobs for task {task_id}: {e}", exc_info=True)
+        # Rollback status on failure
         await update_task_field(task_id, 'status', 'inactive', context)
+
         await query.edit_message_text(
             f"Error: {str(e)}",
             reply_markup=back_to_constructor_keyboard(context)
@@ -62,10 +66,12 @@ async def task_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     success_text += get_text('task_activated_jobs_count', context).format(job_count=job_count)
 
     await query.edit_message_text(success_text, reply_markup=back_to_main_menu_keyboard(context))
-    context.user_data.pop('current_task_id', None)
+
+    # Cleanup context
+    if 'current_task_id' in context.user_data:
+        del context.user_data['current_task_id']
 
     return MAIN_MENU
-
 
 async def task_deactivate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Остановка задачи"""
