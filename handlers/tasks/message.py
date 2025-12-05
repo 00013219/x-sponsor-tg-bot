@@ -72,16 +72,17 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         ids_to_forward = [task['content_message_id']]
 
                     # Forward each message individually to keep "Forwarded" header
-                    for msg_id in ids_to_forward:
-                        try:
-                            forwarded = await context.bot.forward_message(
-                                chat_id=query.message.chat_id,
-                                from_chat_id=task['content_chat_id'],
-                                message_id=msg_id
-                            )
-                            context.user_data['temp_message_ids'].append(forwarded.message_id)
-                        except Exception as e:
-                            logger.warning(f"Could not forward part of preview: {e}")
+                    # Forward messages as a group
+                    try:
+                        forwarded_msgs = await context.bot.forward_messages(
+                            chat_id=query.message.chat_id,
+                            from_chat_id=task['content_chat_id'],
+                            message_ids=ids_to_forward
+                        )
+                        for fwd in forwarded_msgs:
+                            context.user_data['temp_message_ids'].append(fwd.message_id)
+                    except Exception as e:
+                        logger.warning(f"Could not forward preview group: {e}")
                 else:
                     # FORWARD SINGLE MESSAGE
                     forwarded = await context.bot.forward_message(
@@ -529,16 +530,16 @@ async def send_task_preview(user_id, task_id, context, is_group=False, media_dat
                     ids_to_forward = [task['content_message_id']]
 
                 if ids_to_forward:
-                    for msg_id in ids_to_forward:
-                        try:
-                            fwd = await context.bot.forward_message(
-                                chat_id=user_id,
-                                from_chat_id=task['content_chat_id'],
-                                message_id=msg_id
-                            )
+                    try:
+                        fwds = await context.bot.forward_messages(
+                            chat_id=user_id,
+                            from_chat_id=task['content_chat_id'],
+                            message_ids=ids_to_forward
+                        )
+                        for fwd in fwds:
                             context.user_data['temp_message_ids'].append(fwd.message_id)
-                        except Exception as e:
-                            logger.warning(f"Preview forward failed for msg {msg_id}: {e}")
+                    except Exception as e:
+                        logger.warning(f"Preview forward failed: {e}")
                 else:
                     raise Exception("No message IDs found to forward for repost preview.")
 

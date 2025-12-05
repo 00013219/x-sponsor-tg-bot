@@ -137,18 +137,16 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                         ids_to_forward = [content_message_id]
 
                     if ids_to_forward:
-                        sent_msgs = []
-                        for mid in ids_to_forward:
-                            try:
-                                fwd_msg = await bot.forward_message(
-                                    chat_id=channel_id,
-                                    from_chat_id=content_chat_id,
-                                    message_id=mid,
-                                    disable_notification=api_disable_notification
-                                )
-                                sent_msgs.append(fwd_msg)
-                            except Exception as e:
-                                logger.error(f"Failed to forward part of album {mid}: {e}")
+                        try:
+                            sent_msgs = await bot.forward_messages(
+                                chat_id=channel_id,
+                                from_chat_id=content_chat_id,
+                                message_ids=ids_to_forward,
+                                disable_notification=api_disable_notification
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to forward album: {e}")
+                            sent_msgs = []
 
                         if sent_msgs:
                             all_posted_ids = [msg.message_id for msg in sent_msgs]
