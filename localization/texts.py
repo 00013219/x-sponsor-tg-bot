@@ -231,7 +231,7 @@ TEXTS = {
         'error_tariff_not_found': "❌ Ошибка: Тариф не найден.",
         'error_tariff_cannot_buy': "❌ Этот тариф нельзя купить.",
         'invoice_title_template': "Оплата тарифа '{tariff_name}'",
-        'invoice_description_template': "Доступ к лимитам: {tasks} задач, {time_slots} T, {date_slots} D",
+        'invoice_description_template': "Доступ к лимитам: {tasks} задач, {time_slots} времени, {date_slots} дней",
         'precheckout_error': "Что-то пошло не так...",
 
         'task_message_current_prompt': "Ваше текущее сообщение для публикации:\n(Чтобы изменить, просто отправьте новое)",
@@ -629,7 +629,7 @@ Let's get started! Please select your language:""",
         'error_tariff_not_found': "❌ Error: Plan not found.",
         'error_tariff_cannot_buy': "❌ This plan cannot be purchased.",
         'invoice_title_template': "Payment for plan '{tariff_name}'",
-        'invoice_description_template': "Access to limits: {tasks} tasks, {time_slots} T, {date_slots} D",
+        'invoice_description_template': "Access to limits: {tasks} tasks, {time_slots} times, {date_slots} days",
         'precheckout_error': "Something went wrong...",
 
         'task_message_current_prompt': "Your current message for publication:\n\n(To change, just send a new one)",
