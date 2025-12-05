@@ -48,18 +48,83 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor")]
         ]
 
-        # 3. Check for Media Group (Album)
+        # 3. Check if this is a repost (forward)
+        is_repost = task.get('post_type') == 'repost'
+
+        # 4. Check for Media Group (Album)
         media_group_json = task.get('media_group_data')
 
-        if media_group_json:
-            # === SHOWING MEDIA GROUP ===
+        if is_repost:
+            # === REPOST MODE: Forward the original message(s) ===
+            try:
+                if media_group_json:
+                    # For media group reposts, we need to forward each message
+                    # Parse the saved data to get message IDs
+                    media_data = media_group_json if isinstance(media_group_json, dict) else json.loads(
+                        media_group_json)
+
+                    # Forward all messages from the media group
+                    # Note: media_group_data for reposts should contain message_ids
+                    if 'message_ids' in media_data:
+                        for msg_id in media_data['message_ids']:
+                            forwarded = await context.bot.forward_message(
+                                chat_id=query.message.chat_id,
+                                from_chat_id=task['content_chat_id'],
+                                message_id=msg_id
+                            )
+                            if 'temp_message_ids' not in context.user_data:
+                                context.user_data['temp_message_ids'] = []
+                            context.user_data['temp_message_ids'].append(forwarded.message_id)
+                    else:
+                        # Fallback: forward just the first message
+                        forwarded = await context.bot.forward_message(
+                            chat_id=query.message.chat_id,
+                            from_chat_id=task['content_chat_id'],
+                            message_id=task['content_message_id']
+                        )
+                        if 'temp_message_ids' not in context.user_data:
+                            context.user_data['temp_message_ids'] = []
+                        context.user_data['temp_message_ids'].append(forwarded.message_id)
+                else:
+                    # Single message repost
+                    forwarded = await context.bot.forward_message(
+                        chat_id=query.message.chat_id,
+                        from_chat_id=task['content_chat_id'],
+                        message_id=task['content_message_id']
+                    )
+                    if 'temp_message_ids' not in context.user_data:
+                        context.user_data['temp_message_ids'] = []
+                    context.user_data['temp_message_ids'].append(forwarded.message_id)
+
+                # Send control message with buttons
+                control_msg = await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=f"{text}\n\n{get_text('choose_options', context)}",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                if 'temp_message_ids' not in context.user_data:
+                    context.user_data['temp_message_ids'] = []
+                context.user_data['temp_message_ids'].append(control_msg.message_id)
+
+            except Exception as e:
+                logger.error(f"Failed to forward repost: {e}")
+                error_msg = await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=f"⚠️ Error: {e}"
+                )
+                if 'temp_message_ids' not in context.user_data:
+                    context.user_data['temp_message_ids'] = []
+                context.user_data['temp_message_ids'].append(error_msg.message_id)
+
+        elif media_group_json:
+            # === FROM_BOT MODE: Show reconstructed media group ===
             try:
                 # Parse JSON if it's a string
                 media_data = media_group_json if isinstance(media_group_json, dict) else json.loads(media_group_json)
 
                 input_media = []
                 raw_caption = media_data.get('caption', '')
-                # FIXED: Truncate caption to 1024 characters
+                # Truncate caption to 1024 characters
                 caption_to_use = raw_caption[:MAX_MEDIA_CAPTION_LENGTH] if raw_caption else None
 
                 # Reconstruct InputMedia objects
@@ -120,7 +185,7 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.user_data['temp_message_ids'].append(error_msg.message_id)
 
         else:
-            # === SHOWING SINGLE MESSAGE ===
+            # === SHOWING SINGLE MESSAGE (FROM_BOT) ===
             try:
                 # Copy message (Preview) WITH buttons attached
                 copied_message = await context.bot.copy_message(
@@ -347,8 +412,8 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
     Logic:
     1. Collects all messages associated with the media_group_id.
     2. Detects if it is a Repost (Forward).
-    3. If Repost -> No character limit validation, save original caption.
-    4. If Fresh Post -> Validates caption <= 1024 chars (Telegram API limit).
+    3. If Repost -> Save message IDs for forwarding, no caption limit.
+    4. If Fresh Post -> Validates caption <= 1024 chars, save file_ids.
     5. Saves to DB and triggers preview.
     """
     job = context.job
@@ -393,43 +458,59 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
     new_post_type = 'repost' if is_forward else 'from_bot'
 
     # Extract Media Data & Caption
-    media_list = []
     caption = ""
+    media_group_data = {}
 
-    for msg in messages:
-        # Capture caption from the first message that has one (Telegram usually puts it on the first)
-        if msg.caption and not caption:
-            caption = msg.caption
+    if is_forward:
+        # === REPOST: Save message IDs for forwarding ===
+        message_ids = [msg.message_id for msg in messages]
 
-        file_id = None
-        file_type = None
+        # Capture caption (for snippet only, won't be used in forwarding)
+        for msg in messages:
+            if msg.caption and not caption:
+                caption = msg.caption
+                break
 
-        if msg.photo:
-            file_id = msg.photo[-1].file_id  # Best quality
-            file_type = 'photo'
-        elif msg.video:
-            file_id = msg.video.file_id
-            file_type = 'video'
-        elif msg.document:
-            file_id = msg.document.file_id
-            file_type = 'document'
-        elif msg.audio:
-            file_id = msg.audio.file_id
-            file_type = 'audio'
+        media_group_data = {
+            'caption': caption,  # Original caption, no truncation
+            'message_ids': message_ids,
+            'is_repost': True
+        }
 
-        if file_id:
-            media_list.append({
-                'type': file_type,
-                'media': file_id,
-                'has_spoiler': msg.has_media_spoiler if hasattr(msg, 'has_media_spoiler') else False
-            })
+    else:
+        # === FROM_BOT: Save file IDs for reconstruction ===
+        media_list = []
 
-    # --- ✅ VALIDATION & TRUNCATION ---
-    # For reposts: Save the original caption as-is (no validation)
-    # For fresh posts: Validate and truncate if needed
-    if not is_forward:
+        for msg in messages:
+            # Capture caption from the first message that has one
+            if msg.caption and not caption:
+                caption = msg.caption
+
+            file_id = None
+            file_type = None
+
+            if msg.photo:
+                file_id = msg.photo[-1].file_id  # Best quality
+                file_type = 'photo'
+            elif msg.video:
+                file_id = msg.video.file_id
+                file_type = 'video'
+            elif msg.document:
+                file_id = msg.document.file_id
+                file_type = 'document'
+            elif msg.audio:
+                file_id = msg.audio.file_id
+                file_type = 'audio'
+
+            if file_id:
+                media_list.append({
+                    'type': file_type,
+                    'media': file_id,
+                    'has_spoiler': msg.has_media_spoiler if hasattr(msg, 'has_media_spoiler') else False
+                })
+
+        # --- ✅ VALIDATION & TRUNCATION (only for from_bot) ---
         if caption and len(caption) > MAX_MEDIA_CAPTION_LENGTH:
-            # CHANGED: Instead of showing error, truncate the caption
             logger.warning(f"Caption too long ({len(caption)} chars), truncating to {MAX_MEDIA_CAPTION_LENGTH}")
             caption = caption[:MAX_MEDIA_CAPTION_LENGTH]
 
@@ -444,11 +525,11 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
             )
             context.user_data['temp_message_ids'].append(warning_msg.message_id)
 
-    # Prepare JSON data
-    media_group_data = {
-        'caption': caption,
-        'files': media_list
-    }
+        media_group_data = {
+            'caption': caption,
+            'files': media_list,
+            'is_repost': False
+        }
 
     # Generate Snippet
     if caption:
@@ -470,7 +551,7 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
     await update_task_field(task_id, 'post_type', new_post_type, context)
 
     # Save to DB
-    # We save the ID of the first message in the group for reference/copying
+    # We save the ID of the first message in the group for reference
     first_msg_id = messages[0].message_id
     chat_id = messages[0].chat_id
     json_data = json.dumps(media_group_data)
@@ -500,61 +581,80 @@ async def send_task_preview(user_id, task_id, context, is_group=False, media_dat
         try:
             # Parse JSON if it's a string
             media_data = media_data if isinstance(media_data, dict) else json.loads(media_data)
-            input_media = []
-            raw_caption = media_data.get('caption', '')
-            # FIXED: Truncate caption before creating InputMedia objects
-            caption_to_use = raw_caption[:MAX_MEDIA_CAPTION_LENGTH] if raw_caption else None
 
-            for i, f in enumerate(media_data['files']):
-                media_obj = None
-                # Determine InputMedia class based on file type
-                media_class = None
-                if f['type'] == 'photo':
-                    media_class = InputMediaPhoto
-                elif f['type'] == 'video':
-                    media_class = InputMediaVideo
-                elif f['type'] == 'document':
-                    media_class = InputMediaDocument
-                elif f['type'] == 'audio':
-                    media_class = InputMediaAudio
+            # Check if this is a repost
+            is_repost = media_data.get('is_repost', False)
 
-                if media_class:
-                    kwargs = {'media': f['media']}
-
-                    # Only the first item gets the caption
-                    if i == 0 and caption_to_use:
-                        kwargs['caption'] = caption_to_use
-
-                    # Photos and Videos support has_spoiler
-                    if media_class in (InputMediaPhoto, InputMediaVideo):
-                        kwargs['has_spoiler'] = f.get('has_spoiler', False)
-
-                    media_obj = media_class(**kwargs)
-                    input_media.append(media_obj)
-
-            if input_media:
-                logger.info(f"Sending media group with {len(input_media)} items")
-                try:
-                    sent_msgs = await context.bot.send_media_group(chat_id=user_id, media=input_media)
-                    logger.info(f"Successfully sent {len(sent_msgs)} messages in media group")
-                    # Store ALL media group message IDs for cleanup
-                    for msg in sent_msgs:
-                        context.user_data['temp_message_ids'].append(msg.message_id)
-                except TelegramError as te:
-                    # Fallback to copying the original first message
-                    logger.warning(f"send_media_group failed: {te}. Falling back to copy_message.")
-                    task = get_task_details(task_id)
-                    if task and task['content_message_id']:
-                        fallback_msg = await context.bot.copy_message(
+            if is_repost and 'message_ids' in media_data:
+                # === REPOST: Forward all messages ===
+                task = get_task_details(task_id)
+                for msg_id in media_data['message_ids']:
+                    try:
+                        forwarded = await context.bot.forward_message(
                             chat_id=user_id,
                             from_chat_id=task['content_chat_id'],
-                            message_id=task['content_message_id']
+                            message_id=msg_id
                         )
-                        context.user_data['temp_message_ids'].append(fallback_msg.message_id)
+                        context.user_data['temp_message_ids'].append(forwarded.message_id)
+                    except Exception as e:
+                        logger.error(f"Failed to forward message {msg_id}: {e}")
             else:
-                error_msg = await context.bot.send_message(chat_id=user_id,
-                                                           text="⚠️ Error: Could not compile media group for preview.")
-                context.user_data['temp_message_ids'].append(error_msg.message_id)
+                # === FROM_BOT: Reconstruct media group ===
+                input_media = []
+                raw_caption = media_data.get('caption', '')
+                # Truncate caption before creating InputMedia objects
+                caption_to_use = raw_caption[:MAX_MEDIA_CAPTION_LENGTH] if raw_caption else None
+
+                for i, f in enumerate(media_data.get('files', [])):
+                    media_obj = None
+                    # Determine InputMedia class based on file type
+                    media_class = None
+                    if f['type'] == 'photo':
+                        media_class = InputMediaPhoto
+                    elif f['type'] == 'video':
+                        media_class = InputMediaVideo
+                    elif f['type'] == 'document':
+                        media_class = InputMediaDocument
+                    elif f['type'] == 'audio':
+                        media_class = InputMediaAudio
+
+                    if media_class:
+                        kwargs = {'media': f['media']}
+
+                        # Only the first item gets the caption
+                        if i == 0 and caption_to_use:
+                            kwargs['caption'] = caption_to_use
+
+                        # Photos and Videos support has_spoiler
+                        if media_class in (InputMediaPhoto, InputMediaVideo):
+                            kwargs['has_spoiler'] = f.get('has_spoiler', False)
+
+                        media_obj = media_class(**kwargs)
+                        input_media.append(media_obj)
+
+                if input_media:
+                    logger.info(f"Sending media group with {len(input_media)} items")
+                    try:
+                        sent_msgs = await context.bot.send_media_group(chat_id=user_id, media=input_media)
+                        logger.info(f"Successfully sent {len(sent_msgs)} messages in media group")
+                        # Store ALL media group message IDs for cleanup
+                        for msg in sent_msgs:
+                            context.user_data['temp_message_ids'].append(msg.message_id)
+                    except TelegramError as te:
+                        # Fallback to copying the original first message
+                        logger.warning(f"send_media_group failed: {te}. Falling back to copy_message.")
+                        task = get_task_details(task_id)
+                        if task and task['content_message_id']:
+                            fallback_msg = await context.bot.copy_message(
+                                chat_id=user_id,
+                                from_chat_id=task['content_chat_id'],
+                                message_id=task['content_message_id']
+                            )
+                            context.user_data['temp_message_ids'].append(fallback_msg.message_id)
+                else:
+                    error_msg = await context.bot.send_message(chat_id=user_id,
+                                                               text="⚠️ Error: Could not compile media group for preview.")
+                    context.user_data['temp_message_ids'].append(error_msg.message_id)
 
         except Exception as e:
             logger.error(f"Group preview failed: {e}", exc_info=True)
@@ -564,12 +664,25 @@ async def send_task_preview(user_id, task_id, context, is_group=False, media_dat
     else:
         # Standard Single Message Preview
         task = get_task_details(task_id)
+
+        # Check if it's a repost
+        is_repost = task.get('post_type') == 'repost'
+
         try:
-            preview_msg = await context.bot.copy_message(
-                chat_id=user_id,
-                from_chat_id=task['content_chat_id'],
-                message_id=task['content_message_id']
-            )
+            if is_repost:
+                # Forward the message to preserve repost status
+                preview_msg = await context.bot.forward_message(
+                    chat_id=user_id,
+                    from_chat_id=task['content_chat_id'],
+                    message_id=task['content_message_id']
+                )
+            else:
+                # Copy the message (removes forward information)
+                preview_msg = await context.bot.copy_message(
+                    chat_id=user_id,
+                    from_chat_id=task['content_chat_id'],
+                    message_id=task['content_message_id']
+                )
             context.user_data['temp_message_ids'].append(preview_msg.message_id)
         except Exception as e:
             logger.error(f"Preview failed: {e}")

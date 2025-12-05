@@ -127,16 +127,42 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
         # LOGIC B: From Bot (Copy) OR Album
         else:
             if media_group_json:
-                # Handle Media Group (Album)
+                # Check if this is a reposted media group
                 media_data = media_group_json if isinstance(media_group_json, dict) else json.loads(media_group_json)
-                input_media = []
+                is_repost_group = media_data.get('is_repost', False)
 
-                # FIXED: Truncate caption to 1024 characters BEFORE creating InputMedia objects
-                raw_caption = media_data.get('caption', '')
-                caption_to_use = raw_caption[:1024] if raw_caption else None
+                if is_repost_group and 'message_ids' in media_data:
+                    # === REPOST MEDIA GROUP: Forward all messages ===
+                    sent_msgs = []
+                    for msg_id in media_data['message_ids']:
+                        try:
+                            forwarded = await bot.forward_message(
+                                chat_id=channel_id,
+                                from_chat_id=content_chat_id,
+                                message_id=msg_id,
+                                disable_notification=api_disable_notification
+                            )
+                            sent_msgs.append(forwarded)
+                        except Exception as e:
+                            logger.error(f"Failed to forward message {msg_id} in group: {e}")
 
-                for i, f in enumerate(media_data['files']):
-                    media_obj = None
+                    if sent_msgs:
+                        all_posted_ids = [msg.message_id for msg in sent_msgs]
+                        posted_message_id = sent_msgs[0].message_id
+                        sent_msg_object = sent_msgs[0]
+                    else:
+                        raise Exception("Failed to forward any messages in media group")
+
+                else:
+                    # === FROM_BOT MEDIA GROUP: Reconstruct from file IDs ===
+                    input_media = []
+
+                    # FIXED: Truncate caption to 1024 characters BEFORE creating InputMedia objects
+                    raw_caption = media_data.get('caption', '')
+                    caption_to_use = raw_caption[:1024] if raw_caption else None
+
+                    for i, f in enumerate(media_data['files']):
+                        media_obj = None
                     # Only add caption to first media item
                     item_caption = caption_to_use if i == 0 else None
 
@@ -159,14 +185,14 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                     all_posted_ids = [msg.message_id for msg in sent_msgs]
                     posted_message_id = sent_msgs[0].message_id
                     sent_msg_object = sent_msgs[0]  # Keep reference to first item for signature
-            else:
+                else:
                 # Handle Single Message Copy (From Bot)
-                sent_msg = await bot.copy_message(chat_id=channel_id, from_chat_id=content_chat_id,
-                                                  message_id=content_message_id,
-                                                  disable_notification=api_disable_notification)
-                posted_message_id = sent_msg.message_id
-                all_posted_ids = [posted_message_id]
-                sent_msg_object = sent_msg
+                    sent_msg = await bot.copy_message(chat_id=channel_id, from_chat_id=content_chat_id,
+                                                      message_id=content_message_id,
+                                                      disable_notification=api_disable_notification)
+                    posted_message_id = sent_msg.message_id
+                    all_posted_ids = [posted_message_id]
+                    sent_msg_object = sent_msg
 
         logger.info(f"✅ Published successfully. Main Msg ID: {posted_message_id}, Total Msgs: {len(all_posted_ids)}")
 
