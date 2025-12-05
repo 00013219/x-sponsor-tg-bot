@@ -68,7 +68,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/handlers/tasks/message.py</url>
-          <line>264</line>
+          <line>283</line>
           <option name="timeStamp" value="1" />
         </line-breakpoint>
       </breakpoints>

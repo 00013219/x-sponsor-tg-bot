@@ -127,7 +127,7 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
             if media_group_json:
                 media_data = media_group_json if isinstance(media_group_json, dict) else json.loads(media_group_json)
 
-                # === REPOST MEDIA GROUP: Forward individually ===
+                # === REPOST MEDIA GROUP: Forward as group ===
                 if is_repost:
                     # We rely on 'message_ids' being present in the saved JSON to forward the specific album messages
                     ids_to_forward = media_data.get('message_ids', [])
@@ -136,8 +136,10 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                     if not ids_to_forward and content_message_id:
                         ids_to_forward = [content_message_id]
 
+                    sent_msgs = []
+                    
+                    # Try forward_messages first (keeps "Forwarded from" header AND grouping)
                     if ids_to_forward:
-                        sent_msgs = []
                         try:
                             sent_msgs = await bot.forward_messages(
                                 chat_id=channel_id,
@@ -146,30 +148,45 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                                 disable_notification=api_disable_notification
                             )
                         except Exception as e:
-                            logger.warning(f"forward_messages failed: {e}, trying individual forwarding...")
+                            logger.warning(f"forward_messages failed: {e}, falling back to send_media_group...")
+                    
+                    # Fallback: Use send_media_group (preserves grouping, loses "Forwarded from" header)
+                    if not sent_msgs and 'files' in media_data:
+                        input_media = []
+                        raw_caption = media_data.get('caption', '')
+                        caption_to_use = raw_caption[:1024] if raw_caption else None
                         
-                        # Fallback: Forward messages individually if batch forward failed
-                        if not sent_msgs:
-                            for msg_id in ids_to_forward:
-                                try:
-                                    fwd = await bot.forward_message(
-                                        chat_id=channel_id,
-                                        from_chat_id=content_chat_id,
-                                        message_id=msg_id,
-                                        disable_notification=api_disable_notification
-                                    )
-                                    sent_msgs.append(fwd)
-                                except Exception as e2:
-                                    logger.warning(f"Individual forward failed for msg {msg_id}: {e2}")
+                        for i, f in enumerate(media_data['files']):
+                            media_obj = None
+                            item_caption = caption_to_use if i == 0 else None
+                            
+                            if f['type'] == 'photo':
+                                media_obj = InputMediaPhoto(media=f['media'], caption=item_caption,
+                                                            has_spoiler=f.get('has_spoiler', False))
+                            elif f['type'] == 'video':
+                                media_obj = InputMediaVideo(media=f['media'], caption=item_caption,
+                                                            has_spoiler=f.get('has_spoiler', False))
+                            elif f['type'] == 'document':
+                                media_obj = InputMediaDocument(media=f['media'], caption=item_caption)
+                            elif f['type'] == 'audio':
+                                media_obj = InputMediaAudio(media=f['media'], caption=item_caption)
+                            
+                            if media_obj:
+                                input_media.append(media_obj)
+                        
+                        if input_media:
+                            sent_msgs = await bot.send_media_group(
+                                chat_id=channel_id,
+                                media=input_media,
+                                disable_notification=api_disable_notification
+                            )
 
-                        if sent_msgs:
-                            all_posted_ids = [msg.message_id for msg in sent_msgs]
-                            posted_message_id = sent_msgs[0].message_id
-                            sent_msg_object = sent_msgs[0]
-                        else:
-                            raise Exception("No messages could be forwarded for this album.")
+                    if sent_msgs:
+                        all_posted_ids = [msg.message_id for msg in sent_msgs]
+                        posted_message_id = sent_msgs[0].message_id
+                        sent_msg_object = sent_msgs[0]
                     else:
-                        raise Exception("Cannot repost album: Original message IDs missing.")
+                        raise Exception("No messages could be forwarded or reconstructed for this album.")
 
                 # === FROM_BOT MEDIA GROUP: Reconstruct from file IDs ===
                 elif 'files' in media_data:

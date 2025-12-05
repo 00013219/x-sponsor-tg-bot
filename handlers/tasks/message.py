@@ -71,7 +71,7 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if not ids_to_forward:
                         ids_to_forward = [task['content_message_id']]
 
-                    # Forward messages as a group
+                    # Try forward_messages first (keeps "Forwarded from" header AND grouping)
                     forwarded_msgs = []
                     try:
                         forwarded_msgs = await context.bot.forward_messages(
@@ -83,25 +83,43 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             for fwd in forwarded_msgs:
                                 context.user_data['temp_message_ids'].append(fwd.message_id)
                     except Exception as e:
-                        logger.warning(f"forward_messages failed: {e}, trying individual forwarding...")
+                        logger.warning(f"forward_messages failed: {e}, falling back to send_media_group...")
                     
-                    # Fallback: Forward messages individually if batch forward failed
-                    if not forwarded_msgs:
-                        for msg_id in ids_to_forward:
-                            try:
-                                fwd = await context.bot.forward_message(
-                                    chat_id=query.message.chat_id,
-                                    from_chat_id=task['content_chat_id'],
-                                    message_id=msg_id
-                                )
-                                context.user_data['temp_message_ids'].append(fwd.message_id)
-                                forwarded_msgs.append(fwd)
-                            except Exception as e2:
-                                logger.warning(f"Individual forward failed for msg {msg_id}: {e2}")
+                    # Fallback: Use send_media_group (preserves grouping, loses "Forwarded from" header)
+                    if not forwarded_msgs and 'files' in media_data:
+                        input_media = []
+                        caption_to_use = media_data.get('caption', '')[:1024] if media_data.get('caption') else None
+                        
+                        for i, f in enumerate(media_data['files']):
+                            media_obj = None
+                            current_caption = caption_to_use if i == 0 else None
+                            
+                            if f['type'] == 'photo':
+                                media_obj = InputMediaPhoto(media=f['media'], caption=current_caption,
+                                                            has_spoiler=f.get('has_spoiler', False))
+                            elif f['type'] == 'video':
+                                media_obj = InputMediaVideo(media=f['media'], caption=current_caption,
+                                                            has_spoiler=f.get('has_spoiler', False))
+                            elif f['type'] == 'document':
+                                media_obj = InputMediaDocument(media=f['media'], caption=current_caption)
+                            elif f['type'] == 'audio':
+                                media_obj = InputMediaAudio(media=f['media'], caption=current_caption)
+                            
+                            if media_obj:
+                                input_media.append(media_obj)
+                        
+                        if input_media:
+                            sent_msgs = await context.bot.send_media_group(
+                                chat_id=query.message.chat_id,
+                                media=input_media
+                            )
+                            for msg in sent_msgs:
+                                context.user_data['temp_message_ids'].append(msg.message_id)
+                            forwarded_msgs = sent_msgs  # Mark as successful
                     
-                    # If still no messages forwarded, raise an error to trigger error handling
+                    # If still no messages, raise an error
                     if not forwarded_msgs:
-                        raise Exception("Could not forward any messages from the media group")
+                        raise Exception("Could not forward or reconstruct the media group")
                 else:
                     # FORWARD SINGLE MESSAGE
                     forwarded = await context.bot.forward_message(
@@ -548,8 +566,10 @@ async def send_task_preview(user_id, task_id, context, is_group=False, media_dat
                 if not ids_to_forward and task.get('content_message_id'):
                     ids_to_forward = [task['content_message_id']]
 
+                fwds = []
+                
+                # Try forward_messages first (keeps "Forwarded from" header AND grouping)
                 if ids_to_forward:
-                    fwds = []
                     try:
                         fwds = await context.bot.forward_messages(
                             chat_id=user_id,
@@ -560,26 +580,39 @@ async def send_task_preview(user_id, task_id, context, is_group=False, media_dat
                             for fwd in fwds:
                                 context.user_data['temp_message_ids'].append(fwd.message_id)
                     except Exception as e:
-                        logger.warning(f"Preview forward_messages failed: {e}, trying individual...")
+                        logger.warning(f"Preview forward_messages failed: {e}, falling back to send_media_group...")
+                
+                # Fallback: Use send_media_group (preserves grouping, loses "Forwarded from" header)
+                if not fwds and 'files' in media_data:
+                    input_media = []
+                    caption_to_use = media_data.get('caption', '')[:1024] if media_data.get('caption') else None
                     
-                    # Fallback: Forward individually if batch failed
-                    if not fwds:
-                        for msg_id in ids_to_forward:
-                            try:
-                                fwd = await context.bot.forward_message(
-                                    chat_id=user_id,
-                                    from_chat_id=task['content_chat_id'],
-                                    message_id=msg_id
-                                )
-                                context.user_data['temp_message_ids'].append(fwd.message_id)
-                                fwds.append(fwd)
-                            except Exception as e2:
-                                logger.warning(f"Individual preview forward failed for msg {msg_id}: {e2}")
+                    for i, f in enumerate(media_data['files']):
+                        media_obj = None
+                        current_caption = caption_to_use if i == 0 else None
+                        
+                        if f['type'] == 'photo':
+                            media_obj = InputMediaPhoto(media=f['media'], caption=current_caption,
+                                                        has_spoiler=f.get('has_spoiler', False))
+                        elif f['type'] == 'video':
+                            media_obj = InputMediaVideo(media=f['media'], caption=current_caption,
+                                                        has_spoiler=f.get('has_spoiler', False))
+                        elif f['type'] == 'document':
+                            media_obj = InputMediaDocument(media=f['media'], caption=current_caption)
+                        elif f['type'] == 'audio':
+                            media_obj = InputMediaAudio(media=f['media'], caption=current_caption)
+                        
+                        if media_obj:
+                            input_media.append(media_obj)
                     
-                    if not fwds:
-                        raise Exception("Could not forward any messages for repost preview")
-                else:
-                    raise Exception("No message IDs found to forward for repost preview.")
+                    if input_media:
+                        sent_msgs = await context.bot.send_media_group(chat_id=user_id, media=input_media)
+                        for msg in sent_msgs:
+                            context.user_data['temp_message_ids'].append(msg.message_id)
+                        fwds = sent_msgs  # Mark as successful
+                
+                if not fwds:
+                    raise Exception("Could not forward or reconstruct the media group for preview")
 
             # === B. FROM BOT (COPY/UPLOAD) MODE ===
             # Reconstruct the album and send as new messages
