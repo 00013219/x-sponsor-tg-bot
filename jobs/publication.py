@@ -137,6 +137,7 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                         ids_to_forward = [content_message_id]
 
                     if ids_to_forward:
+                        sent_msgs = []
                         try:
                             sent_msgs = await bot.forward_messages(
                                 chat_id=channel_id,
@@ -145,8 +146,21 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                                 disable_notification=api_disable_notification
                             )
                         except Exception as e:
-                            logger.error(f"Failed to forward album: {e}")
-                            sent_msgs = []
+                            logger.warning(f"forward_messages failed: {e}, trying individual forwarding...")
+                        
+                        # Fallback: Forward messages individually if batch forward failed
+                        if not sent_msgs:
+                            for msg_id in ids_to_forward:
+                                try:
+                                    fwd = await bot.forward_message(
+                                        chat_id=channel_id,
+                                        from_chat_id=content_chat_id,
+                                        message_id=msg_id,
+                                        disable_notification=api_disable_notification
+                                    )
+                                    sent_msgs.append(fwd)
+                                except Exception as e2:
+                                    logger.warning(f"Individual forward failed for msg {msg_id}: {e2}")
 
                         if sent_msgs:
                             all_posted_ids = [msg.message_id for msg in sent_msgs]
