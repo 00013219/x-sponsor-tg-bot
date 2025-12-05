@@ -71,8 +71,8 @@ def create_single_publication_job(task: dict, channel_id: int, utc_dt: datetime,
 
 async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
     """
-    EXECUTOR: Publishes post, schedules post-actions, and buffers reports
-    to send a consolidated notification (Debounced).
+    EXECUTOR: Publishes post, schedules post-actions, and buffers reports.
+    Updated to preserve 'Forwarded from' header for Repost Albums.
     """
     bot = context.bot
     job_id = context.job.data.get('job_id')
@@ -103,13 +103,10 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
     # Variables to track message IDs
     posted_message_id = None
     all_posted_ids = []
-
-    # Track the actual message object to apply signature later
     sent_msg_object = None
 
     try:
-        # --- 3. PUBLISHING LOGIC ---
-
+        # --- 3. PUBLISHING LOGIC --- #
         # Check if this is a "Repost" (Forward) or "From Bot"
         is_repost = task_data.get('post_type') == 'repost'
 
@@ -128,19 +125,48 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
         # LOGIC B: From Bot (Copy) OR Album
         else:
             if media_group_json:
-                # Check if this is a reposted media group
                 media_data = media_group_json if isinstance(media_group_json, dict) else json.loads(media_group_json)
-                is_repost_group = media_data.get('is_repost', False)
 
-                if is_repost_group and 'files' in media_data:  # Changed: Check for 'files' instead of 'message_ids'
-                    # === REPOST MEDIA GROUP: Send as single media group ===
+                # === REPOST MEDIA GROUP: Forward individually ===
+                if is_repost:
+                    # We rely on 'message_ids' being present in the saved JSON to forward the specific album messages
+                    ids_to_forward = media_data.get('message_ids', [])
+
+                    # Fallback: if no IDs stored, try to use the single content_message_id
+                    if not ids_to_forward and content_message_id:
+                        ids_to_forward = [content_message_id]
+
+                    if ids_to_forward:
+                        sent_msgs = []
+                        for mid in ids_to_forward:
+                            try:
+                                fwd_msg = await bot.forward_message(
+                                    chat_id=channel_id,
+                                    from_chat_id=content_chat_id,
+                                    message_id=mid,
+                                    disable_notification=api_disable_notification
+                                )
+                                sent_msgs.append(fwd_msg)
+                            except Exception as e:
+                                logger.error(f"Failed to forward part of album {mid}: {e}")
+
+                        if sent_msgs:
+                            all_posted_ids = [msg.message_id for msg in sent_msgs]
+                            posted_message_id = sent_msgs[0].message_id
+                            sent_msg_object = sent_msgs[0]
+                        else:
+                            raise Exception("No messages could be forwarded for this album.")
+                    else:
+                        raise Exception("Cannot repost album: Original message IDs missing.")
+
+                # === FROM_BOT MEDIA GROUP: Reconstruct from file IDs ===
+                elif 'files' in media_data:
                     input_media = []
                     raw_caption = media_data.get('caption', '')
                     caption_to_use = raw_caption[:1024] if raw_caption else None
 
                     for i, f in enumerate(media_data['files']):
                         media_obj = None
-                        # Only add caption to first media item
                         item_caption = caption_to_use if i == 0 else None
 
                         if f['type'] == 'photo':
@@ -165,79 +191,19 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                         posted_message_id = sent_msgs[0].message_id
                         sent_msg_object = sent_msgs[0]
                     else:
-                        raise Exception("Failed to create media group for repost")
+                        raise Exception("Empty media group or invalid file types")
 
-                elif 'files' in media_data:  # For from_bot media groups
-                    # === FROM_BOT MEDIA GROUP: Reconstruct from file IDs ===
-                    input_media = []
-                    raw_caption = media_data.get('caption', '')
-                    caption_to_use = raw_caption[:1024] if raw_caption else None
-
-                    for i, f in enumerate(media_data['files']):
-                        media_obj = None
-                        item_caption = caption_to_use if i == 0 else None
-
-                        if f['type'] == 'photo':
-                            media_obj = InputMediaPhoto(media=f['media'], caption=item_caption)
-                        elif f['type'] == 'video':
-                            media_obj = InputMediaVideo(media=f['media'], caption=item_caption)
-                        elif f['type'] == 'document':
-                            media_obj = InputMediaDocument(media=f['media'], caption=item_caption)
-                        elif f['type'] == 'audio':
-                            media_obj = InputMediaAudio(media=f['media'], caption=item_caption)
-
-                        if media_obj:
-                            input_media.append(media_obj)
-
-                    if input_media:
-                        sent_msgs = await bot.send_media_group(
-                            chat_id=channel_id,
-                            media=input_media,
-                            disable_notification=api_disable_notification
-                        )
-                        all_posted_ids = [msg.message_id for msg in sent_msgs]
-                        posted_message_id = sent_msgs[0].message_id
-                        sent_msg_object = sent_msgs[0]
-                else:
-                    # === FROM_BOT MEDIA GROUP: Reconstruct from file IDs ===
-                    input_media = []
-
-                    # FIXED: Truncate caption to 1024 characters BEFORE creating InputMedia objects
-                    raw_caption = media_data.get('caption', '')
-                    caption_to_use = raw_caption[:1024] if raw_caption else None
-
-                    for i, f in enumerate(media_data['files']):
-                        media_obj = None
-                    # Only add caption to first media item
-                    item_caption = caption_to_use if i == 0 else None
-
-                    if f['type'] == 'photo':
-                        media_obj = InputMediaPhoto(media=f['media'], caption=item_caption)
-                    elif f['type'] == 'video':
-                        media_obj = InputMediaVideo(media=f['media'], caption=item_caption)
-                    elif f['type'] == 'document':
-                        media_obj = InputMediaDocument(media=f['media'], caption=item_caption)
-                    elif f['type'] == 'audio':
-                        media_obj = InputMediaAudio(media=f['media'], caption=item_caption)
-
-                    if media_obj:
-                        input_media.append(media_obj)
-
-                if input_media:
-                    sent_msgs = await bot.send_media_group(chat_id=channel_id, media=input_media,
-                                                           disable_notification=api_disable_notification)
-
-                    all_posted_ids = [msg.message_id for msg in sent_msgs]
-                    posted_message_id = sent_msgs[0].message_id
-                    sent_msg_object = sent_msgs[0]  # Keep reference to first item for signature
-                else:
-                # Handle Single Message Copy (From Bot)
-                    sent_msg = await bot.copy_message(chat_id=channel_id, from_chat_id=content_chat_id,
-                                                      message_id=content_message_id,
-                                                      disable_notification=api_disable_notification)
-                    posted_message_id = sent_msg.message_id
-                    all_posted_ids = [posted_message_id]
-                    sent_msg_object = sent_msg
+            # LOGIC C: Single Message Copy (From Bot)
+            else:
+                sent_msg = await bot.copy_message(
+                    chat_id=channel_id,
+                    from_chat_id=content_chat_id,
+                    message_id=content_message_id,
+                    disable_notification=api_disable_notification
+                )
+                posted_message_id = sent_msg.message_id
+                all_posted_ids = [posted_message_id]
+                sent_msg_object = sent_msg
 
         logger.info(f"✅ Published successfully. Main Msg ID: {posted_message_id}, Total Msgs: {len(all_posted_ids)}")
 
@@ -245,11 +211,9 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
         if not is_repost:  # Signatures cannot be applied to Forwards
             user_settings = get_user_settings(task_data['user_id'])
             if user_settings.get('tariff') == 'free':
-                # Fetch signature
                 sig_row = db_query("SELECT signature FROM bot_settings WHERE id = 1", fetchone=True)
                 if sig_row and sig_row.get('signature'):
                     signature = f"\n\n{sig_row['signature']}"
-
                     try:
                         # Handle different types of sent objects
                         if isinstance(sent_msg_object, Message):
@@ -264,7 +228,6 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                                 )
                             elif sent_msg_object.caption is not None:
                                 current_caption = sent_msg_object.caption or ""
-                                # FIXED: Ensure final caption with signature doesn't exceed 1024
                                 new_caption = (current_caption + signature)[:1024]
                                 await bot.edit_message_caption(
                                     chat_id=channel_id,
@@ -273,7 +236,7 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                                     parse_mode=ParseMode.HTML,
                                 )
                             else:
-                                # For media groups or oddly behaving messages, try fetch via get_updates fallback
+                                # Fallback via get_updates
                                 try:
                                     updates = await bot.get_updates(timeout=1)
                                     for update in updates:
@@ -301,11 +264,12 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                                                                                         dict) else json.loads(
                                                 media_group_json)
                                             original_caption = media_data.get('caption', '')
-                                            # FIXED: Ensure caption + signature doesn't exceed 1024
                                             new_caption = (original_caption + signature)[:1024]
                                             try:
                                                 await bot.edit_message_caption(
-                                                    chat_id=channel_id, message_id=msg_id, caption=new_caption,
+                                                    chat_id=channel_id,
+                                                    message_id=msg_id,
+                                                    caption=new_caption,
                                                     parse_mode=ParseMode.HTML
                                                 )
                                             except Exception:
@@ -318,7 +282,9 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                                                 if message_check.caption:
                                                     new_caption = (message_check.caption + signature)[:1024]
                                                     await bot.edit_message_caption(
-                                                        chat_id=channel_id, message_id=msg_id, caption=new_caption,
+                                                        chat_id=channel_id,
+                                                        message_id=msg_id,
+                                                        caption=new_caption,
                                                         parse_mode=ParseMode.HTML
                                                     )
                                             except Exception:
@@ -330,13 +296,11 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
 
         # 4. PINNING
         pin_duration = float(job_data['pin_duration'] or 0)
-
         if pin_duration > 0 and posted_message_id:
             try:
                 await bot.pin_chat_message(chat_id=channel_id, message_id=posted_message_id,
                                            disable_notification=api_disable_notification)
                 unpin_time = datetime.now(ZoneInfo('UTC')) + timedelta(hours=pin_duration)
-
                 context.application.job_queue.run_once(execute_unpin_job, when=unpin_time,
                                                        data={'channel_id': channel_id, 'message_id': posted_message_id,
                                                              'job_id': job_id},
@@ -346,41 +310,33 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
 
         # 5. AUTO DELETE
         delete_hours = float(job_data['auto_delete_hours'] or 0)
-
         if delete_hours > 0 and posted_message_id:
             del_time = datetime.now(ZoneInfo('UTC')) + timedelta(hours=delete_hours)
             context.application.job_queue.run_once(execute_delete_job, when=del_time,
-                                                   data={'channel_id': channel_id,
-                                                         'message_id': posted_message_id,
-                                                         'job_id': job_id},
-                                                   name=f"del_{job_id}_{posted_message_id}")
+                                                   data={'channel_id': channel_id, 'message_id': posted_message_id,
+                                                         'job_id': job_id}, name=f"del_{job_id}_{posted_message_id}")
 
         # 6. UPDATE STATUS
         ids_json = json.dumps(all_posted_ids)
-
         db_query(
             "UPDATE publication_jobs SET status = 'published', published_at = NOW(), posted_message_id = %s, posted_message_ids = %s WHERE id = %s",
             (posted_message_id, ids_json, job_id), commit=True)
 
         # --- 7. REPORTING (Consolidated with Hyperlinks) ---
-
         # A. Fetch Channel Info
-        ch_info = db_query("SELECT channel_username, channel_title FROM channels WHERE channel_id = %s",
-                           (channel_id,), fetchone=True)
-
+        ch_info = db_query("SELECT channel_username, channel_title FROM channels WHERE channel_id = %s", (channel_id,),
+                           fetchone=True)
         raw_title = ch_info.get('channel_title', str(channel_id)) if ch_info else str(channel_id)
         channel_username = ch_info.get('channel_username') if ch_info else None
 
         # B. Generate Hyperlink
         if channel_username:
-            # Public Channel: https://t.me/username/message_id
             post_link = f"https://t.me/{channel_username}/{posted_message_id}"
         else:
-            # Private Channel: https://t.me/c/ID_WITHOUT_100/message_id
             clean_id = str(channel_id).replace("-100", "")
             post_link = f"https://t.me/c/{clean_id}/{posted_message_id}"
 
-        # C. Format Entry: **Title** (Link)
+        # C. Format Entry
         safe_title = raw_title.replace("[", "").replace("]", "")
         formatted_link_entry = f"[{safe_title}]({post_link})"
 
@@ -397,10 +353,9 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                 'creator_id': task_data['user_id'],
                 'report_enabled': bool(task_data.get('report_enabled', False))
             }
-
         context.bot_data[report_key]['channels'].append(formatted_link_entry)
 
-        # E. Schedule Debounced Sender (3 seconds delay)
+        # E. Schedule Debounced Sender
         sender_job_name = f"send_{report_key}"
         existing_jobs = context.job_queue.get_jobs_by_name(sender_job_name)
         for job in existing_jobs:

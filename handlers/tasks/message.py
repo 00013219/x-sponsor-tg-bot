@@ -21,10 +21,12 @@ MAX_MEDIA_CAPTION_LENGTH = 1024
 
 
 async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Нажата кнопка '📝 Сообщение'"""
+    """
+    Shows preview of the task.
+    Handles 'Forwarded' header correctly for Album Reposts by forwarding individually.
+    """
     query = update.callback_query
     await query.answer()
-
     task_id = context.user_data.get('current_task_id')
     task = get_task_details(task_id)
 
@@ -33,104 +35,86 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await cleanup_temp_messages(context, query.message.chat_id)
 
     if task and task['content_message_id']:
-        # --- EDIT MODE ---
+        # --- EDIT MODE (Showing Preview) ---
         text = get_text('task_message_current_prompt', context)
 
-        # 1. Delete the current message and send new ones instead of editing
+        # 1. Delete the previous prompt
         try:
             await query.delete_message()
         except Exception:
             pass
 
-        # 2. Define Keyboard for the PREVIEW (Delete & Back)
+        # 2. Define Keyboard
         keyboard = [
             [InlineKeyboardButton(get_text('task_delete_message_btn', context), callback_data="task_delete_message")],
             [InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor")]
         ]
 
-        # 3. Check if this is a repost (forward)
+        # 3. Determine Type
         is_repost = task.get('post_type') == 'repost'
-
-        # 4. Check for Media Group (Album)
         media_group_json = task.get('media_group_data')
 
         if is_repost:
-            # === REPOST MODE: Forward the original message(s) ===
+            # === REPOST MODE (Forwarding) ===
             try:
+                # Initialize list to track preview messages
+                if 'temp_message_ids' not in context.user_data:
+                    context.user_data['temp_message_ids'] = []
+
                 if media_group_json:
-                    # For media group reposts, we need to forward each message
-                    # Parse the saved data to get message IDs
+                    # FORWARD MEDIA GROUP
                     media_data = media_group_json if isinstance(media_group_json, dict) else json.loads(
                         media_group_json)
 
-                    # Forward all messages from the media group
-                    # Note: media_group_data for reposts should contain message_ids
-                    if 'message_ids' in media_data:
-                        for msg_id in media_data['message_ids']:
+                    ids_to_forward = media_data.get('message_ids', [])
+                    # Fallback if list is empty, use main ID
+                    if not ids_to_forward:
+                        ids_to_forward = [task['content_message_id']]
+
+                    # Forward each message individually to keep "Forwarded" header
+                    for msg_id in ids_to_forward:
+                        try:
                             forwarded = await context.bot.forward_message(
                                 chat_id=query.message.chat_id,
                                 from_chat_id=task['content_chat_id'],
                                 message_id=msg_id
                             )
-                            if 'temp_message_ids' not in context.user_data:
-                                context.user_data['temp_message_ids'] = []
                             context.user_data['temp_message_ids'].append(forwarded.message_id)
-                    else:
-                        # Fallback: forward just the first message
-                        forwarded = await context.bot.forward_message(
-                            chat_id=query.message.chat_id,
-                            from_chat_id=task['content_chat_id'],
-                            message_id=task['content_message_id']
-                        )
-                        if 'temp_message_ids' not in context.user_data:
-                            context.user_data['temp_message_ids'] = []
-                        context.user_data['temp_message_ids'].append(forwarded.message_id)
+                        except Exception as e:
+                            logger.warning(f"Could not forward part of preview: {e}")
                 else:
-                    # Single message repost
+                    # FORWARD SINGLE MESSAGE
                     forwarded = await context.bot.forward_message(
                         chat_id=query.message.chat_id,
                         from_chat_id=task['content_chat_id'],
                         message_id=task['content_message_id']
                     )
-                    if 'temp_message_ids' not in context.user_data:
-                        context.user_data['temp_message_ids'] = []
                     context.user_data['temp_message_ids'].append(forwarded.message_id)
 
-                # Send control message with buttons
+                # Send separate control message
                 control_msg = await context.bot.send_message(
                     chat_id=query.message.chat_id,
                     text=f"{text}\n\n{get_text('choose_options', context)}",
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
-                if 'temp_message_ids' not in context.user_data:
-                    context.user_data['temp_message_ids'] = []
                 context.user_data['temp_message_ids'].append(control_msg.message_id)
 
             except Exception as e:
-                logger.error(f"Failed to forward repost: {e}")
-                error_msg = await context.bot.send_message(
-                    chat_id=query.message.chat_id,
-                    text=f"⚠️ Error: {e}"
-                )
-                if 'temp_message_ids' not in context.user_data:
-                    context.user_data['temp_message_ids'] = []
-                context.user_data['temp_message_ids'].append(error_msg.message_id)
+                logger.error(f"Failed to forward repost preview: {e}")
+                error_msg = await context.bot.send_message(chat_id=query.message.chat_id, text=f"⚠️ Error: {e}")
+                context.user_data.setdefault('temp_message_ids', []).append(error_msg.message_id)
 
         elif media_group_json:
-            # === FROM_BOT MODE: Show reconstructed media group ===
+            # === FROM_BOT MODE (Reconstruct Album) ===
             try:
-                # Parse JSON if it's a string
                 media_data = media_group_json if isinstance(media_group_json, dict) else json.loads(media_group_json)
-
                 input_media = []
                 raw_caption = media_data.get('caption', '')
-                # Truncate caption to 1024 characters
-                caption_to_use = raw_caption[:MAX_MEDIA_CAPTION_LENGTH] if raw_caption else None
+                # Truncate caption
+                caption_to_use = raw_caption[:1024] if raw_caption else None
 
-                # Reconstruct InputMedia objects
                 for i, f in enumerate(media_data['files']):
                     media_obj = None
-                    # Assign caption only to the first item
                     current_caption = caption_to_use if i == 0 else None
 
                     if f['type'] == 'photo':
@@ -147,45 +131,31 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if media_obj:
                         input_media.append(media_obj)
 
-                # Send the album
                 if input_media:
                     sent_messages = await context.bot.send_media_group(
                         chat_id=query.message.chat_id,
                         media=input_media
                     )
-
-                    # Store ALL media group message IDs for cleanup
                     if 'temp_message_ids' not in context.user_data:
                         context.user_data['temp_message_ids'] = []
-
                     for msg in sent_messages:
                         context.user_data['temp_message_ids'].append(msg.message_id)
 
-                # Send separate message for buttons (Albums can't have buttons)
+                # Send separate control buttons (Albums can't have buttons)
                 control_msg = await context.bot.send_message(
                     chat_id=query.message.chat_id,
                     text=f"{text}\n\n{get_text('choose_options', context)}",
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
-
-                # Store control message ID for cleanup
-                if 'temp_message_ids' not in context.user_data:
-                    context.user_data['temp_message_ids'] = []
-                context.user_data['temp_message_ids'].append(control_msg.message_id)
+                context.user_data.setdefault('temp_message_ids', []).append(control_msg.message_id)
 
             except Exception as e:
                 logger.error(f"Failed to preview media group: {e}")
-                # Fallback: send error message that will be cleaned up later
-                error_msg = await context.bot.send_message(
-                    chat_id=query.message.chat_id,
-                    text=f"{e}"
-                )
-                if 'temp_message_ids' not in context.user_data:
-                    context.user_data['temp_message_ids'] = []
-                context.user_data['temp_message_ids'].append(error_msg.message_id)
+                error_msg = await context.bot.send_message(chat_id=query.message.chat_id, text=f"{e}")
+                context.user_data.setdefault('temp_message_ids', []).append(error_msg.message_id)
 
         else:
-            # === SHOWING SINGLE MESSAGE (FROM_BOT) ===
+            # === FROM_BOT SINGLE MESSAGE ===
             try:
                 # Copy message (Preview) WITH buttons attached
                 copied_message = await context.bot.copy_message(
@@ -194,41 +164,31 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     message_id=task['content_message_id'],
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
-                # Store single message ID for cleanup
                 if 'temp_message_ids' not in context.user_data:
                     context.user_data['temp_message_ids'] = []
                 context.user_data['temp_message_ids'].append(copied_message.message_id)
-
             except Exception as e:
-                logger.warning(f"Не удалось скопировать старое сообщение для task {task_id}: {e}")
+                logger.warning(f"Failed to copy old message for task {task_id}: {e}")
                 error_msg = await context.bot.send_message(
                     chat_id=query.message.chat_id,
                     text=get_text('task_message_display_error', context)
                 )
-                if 'temp_message_ids' not in context.user_data:
-                    context.user_data['temp_message_ids'] = []
-                context.user_data['temp_message_ids'].append(error_msg.message_id)
+                context.user_data.setdefault('temp_message_ids', []).append(error_msg.message_id)
 
         return TASK_SET_MESSAGE
-
     else:
-        # --- ASK MODE ---
+        # --- ASK MODE (No message set yet) ---
         text = get_text('task_ask_message', context)
-
-        # Delete the current message and send a new one instead of editing
         try:
             await query.delete_message()
         except Exception as e:
-            logger.warning(f"Не удалось удалить сообщение: {e}")
+            logger.warning(f"Failed to delete message: {e}")
 
-        # Send new message and store its ID for cleanup
         msg = await context.bot.send_message(
             chat_id=query.message.chat_id,
             text=text,
             reply_markup=back_to_constructor_keyboard(context)
         )
-
-        # Store this message ID for cleanup
         if 'temp_message_ids' not in context.user_data:
             context.user_data['temp_message_ids'] = []
         context.user_data['temp_message_ids'].append(msg.message_id)
@@ -535,105 +495,125 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
     await send_task_preview(user_id, task_id, context, is_group=True, media_data=media_group_data)
 
 
-
 async def send_task_preview(user_id, task_id, context, is_group=False, media_data=None):
-    """Helper to send the saved confirmation and preview with proper tracking"""
-
+    """
+    Helper to send the saved confirmation and preview with proper tracking.
+    ADJUSTED: Now supports 'Forwarded' header for Media Groups by using forward_message.
+    """
     # Initialize temp_message_ids if not exists
     if 'temp_message_ids' not in context.user_data:
         context.user_data['temp_message_ids'] = []
 
-    # Send PREVIEW
+    # Fetch task details to check post_type
+    task = get_task_details(task_id)
+    is_repost = task.get('post_type') == 'repost' if task else False
+
+    # --- PREVIEW LOGIC ---
     if is_group and media_data:
         try:
             # Parse JSON if it's a string
             media_data = media_data if isinstance(media_data, dict) else json.loads(media_data)
-            input_media = []
-            caption_to_use = media_data.get('caption', '')
 
-            for i, f in enumerate(media_data['files']):
-                media_obj = None
-                # Determine InputMedia class based on file type
-                media_class = None
-                if f['type'] == 'photo':
-                    media_class = InputMediaPhoto
-                elif f['type'] == 'video':
-                    media_class = InputMediaVideo
-                elif f['type'] == 'document':
-                    media_class = InputMediaDocument
-                elif f['type'] == 'audio':
-                    media_class = InputMediaAudio
+            # === A. REPOST (FORWARD) MODE ===
+            # We must forward messages individually to keep the "Forwarded from" header
+            if is_repost:
+                # We need message_ids to forward.
+                # If they are in media_data (saved task), use them.
+                # If not (fresh preview), try to use task content_message_id as fallback.
+                ids_to_forward = media_data.get('message_ids', [])
 
-                if media_class:
-                    kwargs = {'media': f['media']}
+                if not ids_to_forward and task.get('content_message_id'):
+                    ids_to_forward = [task['content_message_id']]
 
-                    # Only the first item gets the caption
-                    if i == 0:
-                        kwargs['caption'] = caption_to_use
+                if ids_to_forward:
+                    for msg_id in ids_to_forward:
+                        try:
+                            fwd = await context.bot.forward_message(
+                                chat_id=user_id,
+                                from_chat_id=task['content_chat_id'],
+                                message_id=msg_id
+                            )
+                            context.user_data['temp_message_ids'].append(fwd.message_id)
+                        except Exception as e:
+                            logger.warning(f"Preview forward failed for msg {msg_id}: {e}")
+                else:
+                    raise Exception("No message IDs found to forward for repost preview.")
 
-                    # Photos and Videos support has_spoiler
-                    if media_class in (InputMediaPhoto, InputMediaVideo):
-                        kwargs['has_spoiler'] = f.get('has_spoiler', False)
+            # === B. FROM BOT (COPY/UPLOAD) MODE ===
+            # Reconstruct the album and send as new messages
+            else:
+                input_media = []
+                caption_to_use = media_data.get('caption', '')
 
-                    media = media_class(**kwargs)
-                    input_media.append(media)
+                for i, f in enumerate(media_data['files']):
+                    media_class = None
+                    if f['type'] == 'photo':
+                        media_class = InputMediaPhoto
+                    elif f['type'] == 'video':
+                        media_class = InputMediaVideo
+                    elif f['type'] == 'document':
+                        media_class = InputMediaDocument
+                    elif f['type'] == 'audio':
+                        media_class = InputMediaAudio
 
-            if input_media:
-                try:
+                    if media_class:
+                        kwargs = {'media': f['media']}
+                        if i == 0:
+                            kwargs['caption'] = caption_to_use
+                        # Photos/Videos support spoilers
+                        if media_class in (InputMediaPhoto, InputMediaVideo):
+                            kwargs['has_spoiler'] = f.get('has_spoiler', False)
+
+                        input_media.append(media_class(**kwargs))
+
+                if input_media:
                     sent_msgs = await context.bot.send_media_group(chat_id=user_id, media=input_media)
-                    # Store ALL media group message IDs for cleanup
                     for msg in sent_msgs:
                         context.user_data['temp_message_ids'].append(msg.message_id)
-                except TelegramError as te:
-                    # Fallback to copying the original first message
-                    logger.warning(f"send_media_group failed: {te}. Falling back to copy_message.")
-                    task = get_task_details(task_id)
-                    if task and task['content_message_id']:
-                        fallback_msg = await context.bot.copy_message(
-                            chat_id=user_id,
-                            from_chat_id=task['content_chat_id'],
-                            message_id=task['content_message_id']
-                        )
-                        context.user_data['temp_message_ids'].append(fallback_msg.message_id)
-            else:
-                error_msg = await context.bot.send_message(chat_id=user_id,
-                                                           text="⚠️ Error: Could not compile media group for preview.")
-                context.user_data['temp_message_ids'].append(error_msg.message_id)
+                else:
+                    raise Exception("Empty media group")
 
         except Exception as e:
             logger.error(f"Group preview failed: {e}")
-            error_msg = await context.bot.send_message(chat_id=user_id,
-                                                       text="⚠️ Critical error generating group preview.")
+            error_msg = await context.bot.send_message(chat_id=user_id, text="⚠️ Error displaying group preview.")
             context.user_data['temp_message_ids'].append(error_msg.message_id)
+
     else:
-        # Standard Single Message Preview
-        task = get_task_details(task_id)
+        # --- SINGLE MESSAGE PREVIEW ---
         try:
-            preview_msg = await context.bot.copy_message(
-                chat_id=user_id,
-                from_chat_id=task['content_chat_id'],
-                message_id=task['content_message_id']
-            )
+            if is_repost:
+                # Forward for Repost
+                preview_msg = await context.bot.forward_message(
+                    chat_id=user_id,
+                    from_chat_id=task['content_chat_id'],
+                    message_id=task['content_message_id']
+                )
+            else:
+                # Copy for From Bot
+                preview_msg = await context.bot.copy_message(
+                    chat_id=user_id,
+                    from_chat_id=task['content_chat_id'],
+                    message_id=task['content_message_id']
+                )
             context.user_data['temp_message_ids'].append(preview_msg.message_id)
         except Exception as e:
             logger.error(f"Preview failed: {e}")
             error_msg = await context.bot.send_message(chat_id=user_id, text="⚠️ Error displaying message preview.")
             context.user_data['temp_message_ids'].append(error_msg.message_id)
 
+    # --- CONFIRMATION BUTTONS ---
     success_text = get_text('task_message_saved', context)
     footer_text = get_text('task_message_preview_footer', context)
+
     keyboard = [
         [InlineKeyboardButton(get_text('task_delete_message_btn', context), callback_data="task_delete_message")],
         [InlineKeyboardButton(get_text('back_btn', context), callback_data="task_back_to_constructor")]
     ]
 
-    # Send confirmation message and track it
     confirmation_msg = await context.bot.send_message(
         chat_id=user_id,
         text=f"{success_text}\n\n{footer_text}",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-
-    # Track the confirmation message as well
     context.user_data['temp_message_ids'].append(confirmation_msg.message_id)
 
