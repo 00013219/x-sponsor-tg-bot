@@ -318,9 +318,8 @@ async def save_single_task_message(update: Update, context: ContextTypes.DEFAULT
     content_text = message.text or message.caption or ""
 
     # --- 🚀 DETECT POST TYPE FIRST (For Logic 1) ---
-    # Check if the message is forwarded
-    is_forward = (message.forward_date is not None) or \
-                 (hasattr(message, 'forward_origin') and message.forward_origin is not None)
+    # Check if the message is forwarded (using forward_origin for python-telegram-bot v20+)
+    is_forward = message.forward_origin is not None
 
     new_post_type = 'repost' if is_forward else 'from_bot'
 
@@ -438,8 +437,8 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
 
     # --- DETECT POST TYPE ---
     first_msg = messages[0]
-    is_forward = (first_msg.forward_date is not None) or \
-                 (hasattr(first_msg, 'forward_origin') and first_msg.forward_origin is not None)
+    # Check if the message is forwarded (using forward_origin for python-telegram-bot v20+)
+    is_forward = first_msg.forward_origin is not None
 
     new_post_type = 'repost' if is_forward else 'from_bot'
 
