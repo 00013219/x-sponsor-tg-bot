@@ -67,6 +67,7 @@ def create_single_publication_job(task: dict, channel_id: int, utc_dt: datetime,
         logger.error(f"Failed to insert publication_job in DB for task {task['id']}")
         return None
 
+
 async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
     """
     EXECUTOR: Publishes post, schedules post-actions, and buffers reports
@@ -129,18 +130,24 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                 # Handle Media Group (Album)
                 media_data = media_group_json if isinstance(media_group_json, dict) else json.loads(media_group_json)
                 input_media = []
-                caption_to_use = media_data.get('caption')
+
+                # FIXED: Truncate caption to 1024 characters BEFORE creating InputMedia objects
+                raw_caption = media_data.get('caption', '')
+                caption_to_use = raw_caption[:1024] if raw_caption else None
 
                 for i, f in enumerate(media_data['files']):
                     media_obj = None
+                    # Only add caption to first media item
+                    item_caption = caption_to_use if i == 0 else None
+
                     if f['type'] == 'photo':
-                        media_obj = InputMediaPhoto(media=f['media'], caption=caption_to_use if i == 0 else None)
+                        media_obj = InputMediaPhoto(media=f['media'], caption=item_caption)
                     elif f['type'] == 'video':
-                        media_obj = InputMediaVideo(media=f['media'], caption=caption_to_use if i == 0 else None)
+                        media_obj = InputMediaVideo(media=f['media'], caption=item_caption)
                     elif f['type'] == 'document':
-                        media_obj = InputMediaDocument(media=f['media'], caption=caption_to_use if i == 0 else None)
+                        media_obj = InputMediaDocument(media=f['media'], caption=item_caption)
                     elif f['type'] == 'audio':
-                        media_obj = InputMediaAudio(media=f['media'], caption=caption_to_use if i == 0 else None)
+                        media_obj = InputMediaAudio(media=f['media'], caption=item_caption)
 
                     if media_obj:
                         input_media.append(media_obj)
@@ -186,6 +193,7 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                                 )
                             elif sent_msg_object.caption is not None:
                                 current_caption = sent_msg_object.caption or ""
+                                # FIXED: Ensure final caption with signature doesn't exceed 1024
                                 new_caption = (current_caption + signature)[:1024]
                                 await bot.edit_message_caption(
                                     chat_id=channel_id,
@@ -222,6 +230,7 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                                                                                         dict) else json.loads(
                                                 media_group_json)
                                             original_caption = media_data.get('caption', '')
+                                            # FIXED: Ensure caption + signature doesn't exceed 1024
                                             new_caption = (original_caption + signature)[:1024]
                                             try:
                                                 await bot.edit_message_caption(
@@ -344,7 +353,6 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"❌ Execution failed for job {job_id}: {e}", exc_info=True)
         db_query("UPDATE publication_jobs SET status = 'failed' WHERE id = %s", (job_id,), commit=True)
-
 
 async def send_consolidated_report(context: ContextTypes.DEFAULT_TYPE):
     """

@@ -58,7 +58,9 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 media_data = media_group_json if isinstance(media_group_json, dict) else json.loads(media_group_json)
 
                 input_media = []
-                caption_to_use = media_data.get('caption', '')
+                raw_caption = media_data.get('caption', '')
+                # FIXED: Truncate caption to 1024 characters
+                caption_to_use = raw_caption[:MAX_MEDIA_CAPTION_LENGTH] if raw_caption else None
 
                 # Reconstruct InputMedia objects
                 for i, f in enumerate(media_data['files']):
@@ -111,7 +113,7 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Fallback: send error message that will be cleaned up later
                 error_msg = await context.bot.send_message(
                     chat_id=query.message.chat_id,
-                    text="⚠️ Error displaying full album preview."
+                    text=f"{e}"
                 )
                 if 'temp_message_ids' not in context.user_data:
                     context.user_data['temp_message_ids'] = []
@@ -345,7 +347,7 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
     Logic:
     1. Collects all messages associated with the media_group_id.
     2. Detects if it is a Repost (Forward).
-    3. If Repost -> No character limit validation.
+    3. If Repost -> No character limit validation, save original caption.
     4. If Fresh Post -> Validates caption <= 1024 chars (Telegram API limit).
     5. Saves to DB and triggers preview.
     """
@@ -422,24 +424,25 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
                 'has_spoiler': msg.has_media_spoiler if hasattr(msg, 'has_media_spoiler') else False
             })
 
-    # --- ✅ VALIDATION ---
-    # Logic 4: Check caption length only if it is NOT a repost.
-    # Reposts are allowed to exceed limits as they are forwarded "as is".
-    # Fresh media posts cannot have captions > 1024 chars due to API limits.
+    # --- ✅ VALIDATION & TRUNCATION ---
+    # For reposts: Save the original caption as-is (no validation)
+    # For fresh posts: Validate and truncate if needed
     if not is_forward:
         if caption and len(caption) > MAX_MEDIA_CAPTION_LENGTH:
-            # Send error message to user
-            error_msg = await context.bot.send_message(
+            # CHANGED: Instead of showing error, truncate the caption
+            logger.warning(f"Caption too long ({len(caption)} chars), truncating to {MAX_MEDIA_CAPTION_LENGTH}")
+            caption = caption[:MAX_MEDIA_CAPTION_LENGTH]
+
+            # Optionally notify user
+            warning_msg = await context.bot.send_message(
                 chat_id=user_id,
-                text=get_text('error_mediagroup_caption_too_long', context).format(
+                text=get_text('warning_caption_truncated', context).format(
                     max_length=MAX_MEDIA_CAPTION_LENGTH,
-                    current_length=len(caption)
+                    original_length=len(caption)
                 ),
-                parse_mode='HTML',
-                reply_markup=back_to_constructor_keyboard(context)
+                parse_mode='HTML'
             )
-            context.user_data['temp_message_ids'].append(error_msg.message_id)
-            return
+            context.user_data['temp_message_ids'].append(warning_msg.message_id)
 
     # Prepare JSON data
     media_group_data = {
@@ -484,6 +487,7 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
     # Trigger UI update
     await send_task_preview(user_id, task_id, context, is_group=True, media_data=media_group_data)
 
+
 async def send_task_preview(user_id, task_id, context, is_group=False, media_data=None):
     """Helper to send the saved confirmation and preview with proper tracking"""
 
@@ -497,7 +501,9 @@ async def send_task_preview(user_id, task_id, context, is_group=False, media_dat
             # Parse JSON if it's a string
             media_data = media_data if isinstance(media_data, dict) else json.loads(media_data)
             input_media = []
-            caption_to_use = media_data.get('caption', '')
+            raw_caption = media_data.get('caption', '')
+            # FIXED: Truncate caption before creating InputMedia objects
+            caption_to_use = raw_caption[:MAX_MEDIA_CAPTION_LENGTH] if raw_caption else None
 
             for i, f in enumerate(media_data['files']):
                 media_obj = None
@@ -516,19 +522,21 @@ async def send_task_preview(user_id, task_id, context, is_group=False, media_dat
                     kwargs = {'media': f['media']}
 
                     # Only the first item gets the caption
-                    if i == 0:
+                    if i == 0 and caption_to_use:
                         kwargs['caption'] = caption_to_use
 
                     # Photos and Videos support has_spoiler
                     if media_class in (InputMediaPhoto, InputMediaVideo):
                         kwargs['has_spoiler'] = f.get('has_spoiler', False)
 
-                    media = media_class(**kwargs)
-                    input_media.append(media)
+                    media_obj = media_class(**kwargs)
+                    input_media.append(media_obj)
 
             if input_media:
+                logger.info(f"Sending media group with {len(input_media)} items")
                 try:
                     sent_msgs = await context.bot.send_media_group(chat_id=user_id, media=input_media)
+                    logger.info(f"Successfully sent {len(sent_msgs)} messages in media group")
                     # Store ALL media group message IDs for cleanup
                     for msg in sent_msgs:
                         context.user_data['temp_message_ids'].append(msg.message_id)
@@ -549,7 +557,7 @@ async def send_task_preview(user_id, task_id, context, is_group=False, media_dat
                 context.user_data['temp_message_ids'].append(error_msg.message_id)
 
         except Exception as e:
-            logger.error(f"Group preview failed: {e}")
+            logger.error(f"Group preview failed: {e}", exc_info=True)
             error_msg = await context.bot.send_message(chat_id=user_id,
                                                        text="⚠️ Critical error generating group preview.")
             context.user_data['temp_message_ids'].append(error_msg.message_id)
