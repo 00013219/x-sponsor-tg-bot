@@ -500,7 +500,7 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
 async def send_task_preview(user_id, task_id, context, is_group=False, media_data=None):
     """
     Helper to send the saved confirmation and preview with proper tracking.
-    FIXED: Sends media groups as a single grouped message.
+    ADJUSTED: Now supports 'Forwarded' header for Media Groups by using forward_message.
     """
     # Initialize temp_message_ids if not exists
     if 'temp_message_ids' not in context.user_data:
@@ -516,68 +516,91 @@ async def send_task_preview(user_id, task_id, context, is_group=False, media_dat
             # Parse JSON if it's a string
             media_data = media_data if isinstance(media_data, dict) else json.loads(media_data)
 
-            # ✅ Build InputMedia array from ALL files
-            input_media = []
-            caption_to_use = media_data.get('caption', '')
+            # === A. REPOST (FORWARD) MODE ===
+            # We must forward messages individually to keep the "Forwarded from" header
+            if is_repost:
+                # We need message_ids to forward.
+                # If they are in media_data (saved task), use them.
+                # If not (fresh preview), try to use task content_message_id as fallback.
+                ids_to_forward = media_data.get('message_ids', [])
 
-            for i, f in enumerate(media_data['files']):
-                media_class = None
-                kwargs = {'media': f['media']}
+                if not ids_to_forward and task.get('content_message_id'):
+                    ids_to_forward = [task['content_message_id']]
 
-                # Add caption only to first item
-                if i == 0 and caption_to_use:
-                    kwargs['caption'] = caption_to_use
+                if ids_to_forward:
+                    for msg_id in ids_to_forward:
+                        try:
+                            fwd = await context.bot.forward_message(
+                                chat_id=user_id,
+                                from_chat_id=task['content_chat_id'],
+                                message_id=msg_id
+                            )
+                            context.user_data['temp_message_ids'].append(fwd.message_id)
+                        except Exception as e:
+                            logger.warning(f"Preview forward failed for msg {msg_id}: {e}")
+                else:
+                    raise Exception("No message IDs found to forward for repost preview.")
 
-                if f['type'] == 'photo':
-                    media_class = InputMediaPhoto
-                    kwargs['has_spoiler'] = f.get('has_spoiler', False)
-                elif f['type'] == 'video':
-                    media_class = InputMediaVideo
-                    kwargs['has_spoiler'] = f.get('has_spoiler', False)
-                elif f['type'] == 'document':
-                    media_class = InputMediaDocument
-                elif f['type'] == 'audio':
-                    media_class = InputMediaAudio
-
-                if media_class:
-                    input_media.append(media_class(**kwargs))
-
-            if input_media:
-                # ✅ Send all media as ONE media group
-                sent_msgs = await context.bot.send_media_group(
-                    chat_id=user_id,
-                    media=input_media
-                )
-
-                # Track all message IDs from the group
-                for msg in sent_msgs:
-                    context.user_data['temp_message_ids'].append(msg.message_id)
+            # === B. FROM BOT (COPY/UPLOAD) MODE ===
+            # Reconstruct the album and send as new messages
             else:
-                raise Exception("No valid media to preview")
+                input_media = []
+                caption_to_use = media_data.get('caption', '')
+
+                for i, f in enumerate(media_data['files']):
+                    media_class = None
+                    if f['type'] == 'photo':
+                        media_class = InputMediaPhoto
+                    elif f['type'] == 'video':
+                        media_class = InputMediaVideo
+                    elif f['type'] == 'document':
+                        media_class = InputMediaDocument
+                    elif f['type'] == 'audio':
+                        media_class = InputMediaAudio
+
+                    if media_class:
+                        kwargs = {'media': f['media']}
+                        if i == 0:
+                            kwargs['caption'] = caption_to_use
+                        # Photos/Videos support spoilers
+                        if media_class in (InputMediaPhoto, InputMediaVideo):
+                            kwargs['has_spoiler'] = f.get('has_spoiler', False)
+
+                        input_media.append(media_class(**kwargs))
+
+                if input_media:
+                    sent_msgs = await context.bot.send_media_group(chat_id=user_id, media=input_media)
+                    for msg in sent_msgs:
+                        context.user_data['temp_message_ids'].append(msg.message_id)
+                else:
+                    raise Exception("Empty media group")
 
         except Exception as e:
             logger.error(f"Group preview failed: {e}")
-            error_msg = await context.bot.send_message(
-                chat_id=user_id,
-                text="⚠️ Error displaying group preview."
-            )
+            error_msg = await context.bot.send_message(chat_id=user_id, text="⚠️ Error displaying group preview.")
             context.user_data['temp_message_ids'].append(error_msg.message_id)
 
     else:
         # --- SINGLE MESSAGE PREVIEW ---
         try:
-            preview_msg = await context.bot.copy_message(
-                chat_id=user_id,
-                from_chat_id=task['content_chat_id'],
-                message_id=task['content_message_id']
-            )
+            if is_repost:
+                # Forward for Repost
+                preview_msg = await context.bot.forward_message(
+                    chat_id=user_id,
+                    from_chat_id=task['content_chat_id'],
+                    message_id=task['content_message_id']
+                )
+            else:
+                # Copy for From Bot
+                preview_msg = await context.bot.copy_message(
+                    chat_id=user_id,
+                    from_chat_id=task['content_chat_id'],
+                    message_id=task['content_message_id']
+                )
             context.user_data['temp_message_ids'].append(preview_msg.message_id)
         except Exception as e:
             logger.error(f"Preview failed: {e}")
-            error_msg = await context.bot.send_message(
-                chat_id=user_id,
-                text="⚠️ Error displaying message preview."
-            )
+            error_msg = await context.bot.send_message(chat_id=user_id, text="⚠️ Error displaying message preview.")
             context.user_data['temp_message_ids'].append(error_msg.message_id)
 
     # --- CONFIRMATION BUTTONS ---
