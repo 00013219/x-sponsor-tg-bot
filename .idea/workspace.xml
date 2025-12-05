@@ -70,12 +70,12 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/handlers/tasks/message.py</url>
-          <line>302</line>
+          <line>309</line>
           <option name="timeStamp" value="1" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/jobs/publication.py</url>
-          <line>70</line>
+          <line>71</line>
           <option name="timeStamp" value="2" />
         </line-breakpoint>
       </breakpoints>

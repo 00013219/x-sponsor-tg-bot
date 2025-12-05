@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import datetime, timedelta
 from typing import Optional
@@ -132,23 +133,30 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                 is_repost_group = media_data.get('is_repost', False)
 
                 if is_repost_group and 'message_ids' in media_data:
-                    # === REPOST MEDIA GROUP: Forward all messages AT ONCE ===
-                    # FIX: Use forward_messages (plural) to preserve album grouping
+                    # === REPOST MEDIA GROUP: Forward concurrently ===
                     try:
-                        sent_msgs = await bot.forward_messages(
-                            chat_id=channel_id,
-                            from_chat_id=content_chat_id,
-                            message_ids=media_data['message_ids'],
-                            disable_notification=api_disable_notification
-                        )
+                        # 1. Prepare all forward tasks
+                        tasks = [
+                            bot.forward_message(
+                                chat_id=channel_id,
+                                from_chat_id=content_chat_id,
+                                message_id=msg_id,
+                                disable_notification=api_disable_notification
+                            ) for msg_id in media_data['message_ids']
+                        ]
 
-                        # Update ID tracking
+                        # 2. Fire them all at once (This creates the Album effect)
+                        sent_msgs = await asyncio.gather(*tasks)
+
+                        # 3. Sort by message_id just in case they arrived out of order (optional safety)
+                        sent_msgs.sort(key=lambda x: x.message_id)
+
                         all_posted_ids = [msg.message_id for msg in sent_msgs]
                         posted_message_id = sent_msgs[0].message_id
                         sent_msg_object = sent_msgs[0]
 
                     except Exception as e:
-                        logger.error(f"Failed to forward message group: {e}")
+                        logger.error(f"Failed to forward message group concurrently: {e}")
                         raise Exception(f"Failed to forward media group: {e}")
 
                 else:
