@@ -62,6 +62,12 @@ def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
     lbl_type = get_text('task_set_post_type_btn', context)
     val_type = "🤖" if post_type == 'from_bot' else "↪️"
 
+    # Check if name and advertiser are set
+    has_name = bool(task.get('task_name')) if task else False
+    has_advertiser = bool(task.get('advertiser_user_id')) if task else False
+    val_name = "✅" if has_name else "❌"
+    val_advertiser = "✅" if has_advertiser else "❌"
+
     if is_active:
         action_btn = InlineKeyboardButton(get_text('task_btn_deactivate', context), callback_data="task_deactivate")
     else:
@@ -75,7 +81,7 @@ def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
 
     # --- Construct Keyboard ---
     keyboard = [
-        [InlineKeyboardButton(get_text('task_set_name_btn', context), callback_data="task_set_name")],
+        [InlineKeyboardButton(f"{get_text('task_set_name_btn', context)} {val_name}", callback_data="task_set_name")],
         [InlineKeyboardButton(f"{lbl_msg} {val_msg}", callback_data="task_set_message")],
         [InlineKeyboardButton(f"{lbl_ch} {val_ch}", callback_data="task_select_channels")],
         [
@@ -97,7 +103,7 @@ def task_constructor_keyboard(context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(f"{lbl_delete}: {get_display_time(delete_val)}", callback_data="task_set_delete")])
     keyboard.append([InlineKeyboardButton(f"{lbl_report}: {val_report}", callback_data="task_set_report")])
     keyboard.append(
-        [InlineKeyboardButton(get_text('task_set_advertiser_btn', context), callback_data="task_set_advertiser")])
+        [InlineKeyboardButton(f"{get_text('task_set_advertiser_btn', context)} {val_advertiser}", callback_data="task_set_advertiser")])
     keyboard.append([InlineKeyboardButton(f"{lbl_type}: {val_type}", callback_data="task_set_post_type")])
     keyboard.append([InlineKeyboardButton(get_text('task_delete_btn', context), callback_data="task_delete")])
     keyboard.append([action_btn])

@@ -244,8 +244,25 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                 if sig_row and sig_row.get('signature'):
                     signature = f"\n\n{sig_row['signature']}"
                     try:
-                        # Handle different types of sent objects
-                        if isinstance(sent_msg_object, Message):
+                        # For media groups, apply signature to first message caption
+                        if media_group_json and all_posted_ids:
+                            media_data = media_group_json if isinstance(media_group_json, dict) else json.loads(media_group_json)
+                            original_caption = media_data.get('caption', '') or ''
+                            new_caption = (original_caption + signature)[:1024]
+                            try:
+                                await bot.edit_message_caption(
+                                    chat_id=channel_id,
+                                    message_id=posted_message_id,
+                                    caption=new_caption,
+                                    parse_mode=ParseMode.HTML
+                                )
+                                logger.info(f"✅ Signature applied to media group caption for job {job_id}")
+                            except Exception as e:
+                                logger.warning(f"Could not apply signature to media group: {e}")
+                        
+                        # For single messages from copy_message
+                        elif isinstance(sent_msg_object, Message):
+                            # sent_msg_object is a real Message (from forward or send_media_group)
                             if sent_msg_object.text:
                                 new_text = (sent_msg_object.text + signature)[:4096]
                                 await bot.edit_message_text(
@@ -255,6 +272,7 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                                     parse_mode=ParseMode.HTML,
                                     disable_web_page_preview=True
                                 )
+                                logger.info(f"✅ Signature applied to text message for job {job_id}")
                             elif sent_msg_object.caption is not None:
                                 current_caption = sent_msg_object.caption or ""
                                 new_caption = (current_caption + signature)[:1024]
@@ -264,62 +282,51 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                                     caption=new_caption,
                                     parse_mode=ParseMode.HTML,
                                 )
-                            else:
-                                # Fallback via get_updates
+                                logger.info(f"✅ Signature applied to caption for job {job_id}")
+                        else:
+                            # copy_message returns MessageId, not Message
+                            # We need to fetch the original content to determine what to edit
+                            # Try to get original message from the bot's chat (source)
+                            try:
+                                # First try to edit as caption (for media messages)
+                                await bot.edit_message_caption(
+                                    chat_id=channel_id,
+                                    message_id=posted_message_id,
+                                    caption=signature.strip(),
+                                    parse_mode=ParseMode.HTML,
+                                )
+                                logger.info(f"✅ Signature applied as caption for copied message job {job_id}")
+                            except Exception:
+                                # If that fails, try to get the message via getUpdates and edit text
                                 try:
+                                    # Try to edit as text (for text-only messages)
+                                    # We need to get the current text first - use getChat/getUpdates workaround
                                     updates = await bot.get_updates(timeout=1)
                                     for update in updates:
                                         if update.channel_post and update.channel_post.message_id == posted_message_id:
-                                            message_to_edit = update.channel_post
-                                            if message_to_edit.caption is not None:
-                                                current_caption = message_to_edit.caption or ""
-                                                new_caption = (current_caption + signature)[:1024]
+                                            msg = update.channel_post
+                                            if msg.text:
+                                                new_text = (msg.text + signature)[:4096]
+                                                await bot.edit_message_text(
+                                                    chat_id=channel_id,
+                                                    message_id=posted_message_id,
+                                                    text=new_text,
+                                                    parse_mode=ParseMode.HTML,
+                                                    disable_web_page_preview=True
+                                                )
+                                                logger.info(f"✅ Signature applied via getUpdates for job {job_id}")
+                                            elif msg.caption is not None:
+                                                new_caption = ((msg.caption or "") + signature)[:1024]
                                                 await bot.edit_message_caption(
                                                     chat_id=channel_id,
                                                     message_id=posted_message_id,
                                                     caption=new_caption,
                                                     parse_mode=ParseMode.HTML,
                                                 )
+                                                logger.info(f"✅ Signature applied to caption via getUpdates for job {job_id}")
                                             break
-                                except Exception as e:
-                                    logger.warning(f"Signature fallback failed: {e}")
-                        else:
-                            # Handling lists (media groups)
-                            if media_group_json and all_posted_ids:
-                                for msg_id in all_posted_ids:
-                                    try:
-                                        if msg_id == posted_message_id:  # First message
-                                            media_data = media_group_json if isinstance(media_group_json,
-                                                                                        dict) else json.loads(
-                                                media_group_json)
-                                            original_caption = media_data.get('caption', '')
-                                            new_caption = (original_caption + signature)[:1024]
-                                            try:
-                                                await bot.edit_message_caption(
-                                                    chat_id=channel_id,
-                                                    message_id=msg_id,
-                                                    caption=new_caption,
-                                                    parse_mode=ParseMode.HTML
-                                                )
-                                            except Exception:
-                                                pass
-                                        else:
-                                            # Try to append to other captions in group
-                                            try:
-                                                message_check = await context.bot.get_message(chat_id=channel_id,
-                                                                                              message_id=msg_id)
-                                                if message_check.caption:
-                                                    new_caption = (message_check.caption + signature)[:1024]
-                                                    await bot.edit_message_caption(
-                                                        chat_id=channel_id,
-                                                        message_id=msg_id,
-                                                        caption=new_caption,
-                                                        parse_mode=ParseMode.HTML
-                                                    )
-                                            except Exception:
-                                                pass
-                                    except Exception:
-                                        pass
+                                except Exception as e2:
+                                    logger.warning(f"Signature fallback failed: {e2}")
                     except Exception as e:
                         logger.warning(f"⚠️ Could not apply signature to job {job_id}: {e}")
 
@@ -337,12 +344,13 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"Pinning failed: {e}")
 
-        # 5. AUTO DELETE
+        # 5. AUTO DELETE - Pass all message IDs for media groups
         delete_hours = float(job_data['auto_delete_hours'] or 0)
         if delete_hours > 0 and posted_message_id:
             del_time = datetime.now(ZoneInfo('UTC')) + timedelta(hours=delete_hours)
             context.application.job_queue.run_once(execute_delete_job, when=del_time,
                                                    data={'channel_id': channel_id, 'message_id': posted_message_id,
+                                                         'message_ids': all_posted_ids,  # Pass ALL message IDs
                                                          'job_id': job_id}, name=f"del_{job_id}_{posted_message_id}")
 
         # 6. UPDATE STATUS

@@ -378,9 +378,8 @@ async def task_set_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def task_set_post_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Переключение типа поста"""
+    """Переключение типа поста с валидацией длины сообщения"""
     query = update.callback_query
-
 
     task_id = context.user_data.get('current_task_id')
 
@@ -393,14 +392,42 @@ async def task_set_post_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return TASK_CONSTRUCTOR
 
-    await query.answer()
-
     task = get_task_details(task_id)
 
     # Переключаем между from_bot и repost
     new_value = 'repost' if task['post_type'] == 'from_bot' else 'from_bot'
+
+    # --- Validation when switching from repost to from_bot ---
+    if task['post_type'] == 'repost' and new_value == 'from_bot':
+        import json
+        MAX_MEDIA_CAPTION_LENGTH = 1024
+
+        # Check media group data - captions are limited to 1024 chars
+        media_group_data = task.get('media_group_data')
+        if media_group_data:
+            # Parse JSON if string
+            if isinstance(media_group_data, str):
+                try:
+                    media_group_data = json.loads(media_group_data)
+                except json.JSONDecodeError:
+                    media_group_data = None
+
+            if media_group_data:
+                caption = media_group_data.get('caption', '')
+                if caption and len(caption) > MAX_MEDIA_CAPTION_LENGTH:
+                    await query.answer(
+                        get_text('error_repost_caption_too_long_alert', context).format(
+                            max_length=MAX_MEDIA_CAPTION_LENGTH,
+                            current_length=len(caption)
+                        ),
+                        show_alert=True
+                    )
+                    return TASK_CONSTRUCTOR
+
+    # Update the post type
     await update_task_field(task_id, 'post_type', new_value, context)
 
+    # Show success alert
     type_text = get_text('status_from_bot', context) if new_value == 'from_bot' else get_text('status_repost', context)
     alert_text = get_text('alert_post_type_status', context).format(status=type_text)
     await query.answer(alert_text)

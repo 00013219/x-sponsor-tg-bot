@@ -13,6 +13,7 @@ async def execute_delete_job(context: ContextTypes.DEFAULT_TYPE):
     bot = context.bot
     channel_id = context.job.data.get('channel_id')
     fallback_message_id = context.job.data.get('message_id')
+    direct_message_ids = context.job.data.get('message_ids')  # Direct IDs from publication job
     job_id = context.job.data.get('job_id')
 
     if not channel_id:
@@ -20,8 +21,13 @@ async def execute_delete_job(context: ContextTypes.DEFAULT_TYPE):
 
     messages_to_delete = []
 
+    # 0. First priority: Use message_ids passed directly from publication job
+    if direct_message_ids and isinstance(direct_message_ids, list):
+        messages_to_delete = direct_message_ids
+        logger.debug(f"Using direct message_ids from job data: {messages_to_delete}")
+
     # 1. Try to fetch the full list of IDs from DB
-    if job_id:
+    if not messages_to_delete and job_id:
         job_data = db_query(
             "SELECT posted_message_ids, posted_message_id FROM publication_jobs WHERE id = %s",
             (job_id,), fetchone=True

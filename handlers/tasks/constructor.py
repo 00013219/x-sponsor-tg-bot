@@ -141,7 +141,7 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
 
         text = f"{title}\n\n"
         text += f"**{get_text('task_status_label', context)}{status_val}**\n\n"
-        text += f"{task_name}\n"
+        text += f"{get_text('header_name', context)}{task_name}\n"
         text += f"{get_text('header_channels', context)}{channels_status}\n"
         text += f"{get_text('header_message', context)}{message_status}\n"
         text += f"{get_text('header_weekdays', context)}{weekdays_text}\n"
@@ -283,7 +283,7 @@ def get_task_constructor_text(context: ContextTypes.DEFAULT_TYPE) -> str:
 
     text = f"{title}\n\n"
     text += f"**{status_label}{status_val}**\n\n"
-    text += f"{display_name}\n"
+    text += f"{get_text('header_name', context)}{display_name}\n"
     text += f"{get_text('header_channels', context)}{channels_status}\n"
     text += f"{get_text('header_message', context)}{message_status}\n"
 
