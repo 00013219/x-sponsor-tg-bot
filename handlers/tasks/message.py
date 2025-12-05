@@ -457,7 +457,8 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
     media_group_data = {
         'caption': caption,
         'files': media_list,  # All media files in the group
-        'is_repost': is_forward
+        'is_repost': is_forward,
+        'message_ids': [m.message_id for m in messages]
     }
 
     # Generate Snippet
