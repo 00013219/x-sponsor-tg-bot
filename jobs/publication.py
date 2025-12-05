@@ -132,26 +132,24 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                 is_repost_group = media_data.get('is_repost', False)
 
                 if is_repost_group and 'message_ids' in media_data:
-                    # === REPOST MEDIA GROUP: Forward all messages ===
-                    sent_msgs = []
-                    for msg_id in media_data['message_ids']:
-                        try:
-                            forwarded = await bot.forward_message(
-                                chat_id=channel_id,
-                                from_chat_id=content_chat_id,
-                                message_id=msg_id,
-                                disable_notification=api_disable_notification
-                            )
-                            sent_msgs.append(forwarded)
-                        except Exception as e:
-                            logger.error(f"Failed to forward message {msg_id} in group: {e}")
+                    # === REPOST MEDIA GROUP: Forward all messages AT ONCE ===
+                    # FIX: Use forward_messages (plural) to preserve album grouping
+                    try:
+                        sent_msgs = await bot.forward_messages(
+                            chat_id=channel_id,
+                            from_chat_id=content_chat_id,
+                            message_ids=media_data['message_ids'],
+                            disable_notification=api_disable_notification
+                        )
 
-                    if sent_msgs:
+                        # Update ID tracking
                         all_posted_ids = [msg.message_id for msg in sent_msgs]
                         posted_message_id = sent_msgs[0].message_id
                         sent_msg_object = sent_msgs[0]
-                    else:
-                        raise Exception("Failed to forward any messages in media group")
+
+                    except Exception as e:
+                        logger.error(f"Failed to forward message group: {e}")
+                        raise Exception(f"Failed to forward media group: {e}")
 
                 else:
                     # === FROM_BOT MEDIA GROUP: Reconstruct from file IDs ===

@@ -58,25 +58,24 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # === REPOST MODE: Forward the original message(s) ===
             try:
                 if media_group_json:
-                    # For media group reposts, we need to forward each message
-                    # Parse the saved data to get message IDs
                     media_data = media_group_json if isinstance(media_group_json, dict) else json.loads(
                         media_group_json)
 
-                    # Forward all messages from the media group
-                    # Note: media_group_data for reposts should contain message_ids
                     if 'message_ids' in media_data:
-                        for msg_id in media_data['message_ids']:
-                            forwarded = await context.bot.forward_message(
-                                chat_id=query.message.chat_id,
-                                from_chat_id=task['content_chat_id'],
-                                message_id=msg_id
-                            )
-                            if 'temp_message_ids' not in context.user_data:
-                                context.user_data['temp_message_ids'] = []
-                            context.user_data['temp_message_ids'].append(forwarded.message_id)
+                        # FIX: Use forward_messages to keep preview grouped
+                        forwarded_msgs = await context.bot.forward_messages(
+                            chat_id=query.message.chat_id,
+                            from_chat_id=task['content_chat_id'],
+                            message_ids=media_data['message_ids']
+                        )
+
+                        # Track IDs for cleanup
+                        if 'temp_message_ids' not in context.user_data:
+                            context.user_data['temp_message_ids'] = []
+                        for fwd in forwarded_msgs:
+                            context.user_data['temp_message_ids'].append(fwd.message_id)
                     else:
-                        # Fallback: forward just the first message
+                        # Fallback for single message or missing IDs
                         forwarded = await context.bot.forward_message(
                             chat_id=query.message.chat_id,
                             from_chat_id=task['content_chat_id'],
