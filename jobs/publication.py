@@ -133,33 +133,70 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                 is_repost_group = media_data.get('is_repost', False)
 
                 if is_repost_group and 'message_ids' in media_data:
-                    # === REPOST MEDIA GROUP: Forward with minimal delay ===
-                    try:
-                        sent_msgs = []
+                    # === REPOST MEDIA GROUP: Reconstruct as single grouped message ===
+                    input_media = []
 
-                        # Forward messages with minimal delay to maintain grouping
-                        for msg_id in media_data['message_ids']:
-                            msg = await bot.forward_message(
-                                chat_id=channel_id,
+                    for idx, msg_id in enumerate(media_data['message_ids']):
+                        try:
+                            # Forward message to bot itself temporarily to access media
+                            temp_forward = await bot.forward_message(
+                                chat_id=context.bot.id,
                                 from_chat_id=content_chat_id,
                                 message_id=msg_id,
-                                disable_notification=api_disable_notification
+                                disable_notification=True
                             )
-                            sent_msgs.append(msg)
-                            # Small delay to ensure order but maintain grouping
-                            await asyncio.sleep(0.05)  # 50ms between messages
 
+                            # Extract media and build InputMedia object
+                            media_obj = None
+                            caption = temp_forward.caption if idx == 0 else None  # Only first gets caption
+
+                            if temp_forward.photo:
+                                media_obj = InputMediaPhoto(
+                                    media=temp_forward.photo[-1].file_id,
+                                    caption=caption,
+                                    has_spoiler=getattr(temp_forward, 'has_media_spoiler', False)
+                                )
+                            elif temp_forward.video:
+                                media_obj = InputMediaVideo(
+                                    media=temp_forward.video.file_id,
+                                    caption=caption,
+                                    has_spoiler=getattr(temp_forward, 'has_media_spoiler', False)
+                                )
+                            elif temp_forward.document:
+                                media_obj = InputMediaDocument(
+                                    media=temp_forward.document.file_id,
+                                    caption=caption
+                                )
+                            elif temp_forward.audio:
+                                media_obj = InputMediaAudio(
+                                    media=temp_forward.audio.file_id,
+                                    caption=caption
+                                )
+
+                            if media_obj:
+                                input_media.append(media_obj)
+
+                            # Clean up temporary forward
+                            try:
+                                await bot.delete_message(chat_id=context.bot.id, message_id=temp_forward.message_id)
+                            except:
+                                pass
+
+                        except Exception as e:
+                            logger.error(f"Failed to process message {msg_id} in group: {e}")
+
+                    # Send all media as ONE grouped message
+                    if input_media:
+                        sent_msgs = await bot.send_media_group(
+                            chat_id=channel_id,
+                            media=input_media,
+                            disable_notification=api_disable_notification
+                        )
                         all_posted_ids = [msg.message_id for msg in sent_msgs]
                         posted_message_id = sent_msgs[0].message_id
                         sent_msg_object = sent_msgs[0]
-
-                    except Exception as e:
-                        logger.error(f"Failed to forward message group: {e}")
-                        raise Exception(f"Failed to forward media group: {e}")
-
-                    except Exception as e:
-                        logger.error(f"Failed to forward message group concurrently: {e}")
-                        raise Exception(f"Failed to forward media group: {e}")
+                    else:
+                        raise Exception("Failed to process any messages in media group")
 
                 else:
                     # === FROM_BOT MEDIA GROUP: Reconstruct from file IDs ===

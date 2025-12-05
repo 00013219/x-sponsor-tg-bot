@@ -64,34 +64,70 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         media_group_json)
 
                     if 'message_ids' in media_data:
-                        # Forward messages sequentially with minimal delay to maintain grouping
-                        forwarded_msgs = []
+                        # Build InputMedia array to send as grouped message
+                        input_media = []
 
-                        for msg_id in media_data['message_ids']:
-                            forwarded = await context.bot.forward_message(
+                        for idx, msg_id in enumerate(media_data['message_ids']):
+                            try:
+                                # Forward to self to extract media
+                                temp = await context.bot.forward_message(
+                                    chat_id=context.bot.id,
+                                    from_chat_id=task['content_chat_id'],
+                                    message_id=msg_id,
+                                    disable_notification=True
+                                )
+
+                                media_obj = None
+                                caption = temp.caption if idx == 0 else None
+
+                                if temp.photo:
+                                    media_obj = InputMediaPhoto(
+                                        media=temp.photo[-1].file_id,
+                                        caption=caption,
+                                        has_spoiler=getattr(temp, 'has_media_spoiler', False)
+                                    )
+                                elif temp.video:
+                                    media_obj = InputMediaVideo(
+                                        media=temp.video.file_id,
+                                        caption=caption,
+                                        has_spoiler=getattr(temp, 'has_media_spoiler', False)
+                                    )
+                                elif temp.document:
+                                    media_obj = InputMediaDocument(
+                                        media=temp.document.file_id,
+                                        caption=caption
+                                    )
+                                elif temp.audio:
+                                    media_obj = InputMediaAudio(
+                                        media=temp.audio.file_id,
+                                        caption=caption
+                                    )
+
+                                if media_obj:
+                                    input_media.append(media_obj)
+
+                                # Cleanup
+                                try:
+                                    await context.bot.delete_message(chat_id=context.bot.id, message_id=temp.message_id)
+                                except:
+                                    pass
+
+                            except Exception as e:
+                                logger.error(f"Failed to process preview message {msg_id}: {e}")
+
+                        # Send as grouped message (not separate forwards)
+                        if input_media:
+                            sent_msgs = await context.bot.send_media_group(
                                 chat_id=query.message.chat_id,
-                                from_chat_id=task['content_chat_id'],
-                                message_id=msg_id
+                                media=input_media
                             )
-                            forwarded_msgs.append(forwarded)
-                            # Small delay to maintain order while keeping grouping
-                            await asyncio.sleep(0.05)  # 50ms between messages
 
-                        if 'temp_message_ids' not in context.user_data:
-                            context.user_data['temp_message_ids'] = []
+                            # Track all message IDs for cleanup
+                            if 'temp_message_ids' not in context.user_data:
+                                context.user_data['temp_message_ids'] = []
 
-                        for msg in forwarded_msgs:
-                            context.user_data['temp_message_ids'].append(msg.message_id)
-                    else:
-                        # Fallback: forward just the first message
-                        forwarded = await context.bot.forward_message(
-                            chat_id=query.message.chat_id,
-                            from_chat_id=task['content_chat_id'],
-                            message_id=task['content_message_id']
-                        )
-                        if 'temp_message_ids' not in context.user_data:
-                            context.user_data['temp_message_ids'] = []
-                        context.user_data['temp_message_ids'].append(forwarded.message_id)
+                            for msg in sent_msgs:
+                                context.user_data['temp_message_ids'].append(msg.message_id)
                 else:
                     # Single message repost
                     forwarded = await context.bot.forward_message(
