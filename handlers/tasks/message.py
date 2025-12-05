@@ -64,17 +64,18 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         media_group_json)
 
                     if 'message_ids' in media_data:
-                        # Create a list of forward tasks
-                        tasks = [
-                            context.bot.forward_message(
+                        # Forward messages sequentially with minimal delay to maintain grouping
+                        forwarded_msgs = []
+
+                        for msg_id in media_data['message_ids']:
+                            forwarded = await context.bot.forward_message(
                                 chat_id=query.message.chat_id,
                                 from_chat_id=task['content_chat_id'],
                                 message_id=msg_id
-                            ) for msg_id in media_data['message_ids']
-                        ]
-
-                        # Execute all forwards AT THE SAME TIME
-                        forwarded_msgs = await asyncio.gather(*tasks)
+                            )
+                            forwarded_msgs.append(forwarded)
+                            # Small delay to maintain order while keeping grouping
+                            await asyncio.sleep(0.05)  # 50ms between messages
 
                         if 'temp_message_ids' not in context.user_data:
                             context.user_data['temp_message_ids'] = []
@@ -592,7 +593,7 @@ async def send_task_preview(user_id, task_id, context, is_group=False, media_dat
             is_repost = media_data.get('is_repost', False)
 
             if is_repost and 'message_ids' in media_data:
-                # === REPOST: Forward all messages ===
+                # === REPOST: Forward all messages sequentially with minimal delay ===
                 task = get_task_details(task_id)
                 for msg_id in media_data['message_ids']:
                     try:
@@ -602,6 +603,8 @@ async def send_task_preview(user_id, task_id, context, is_group=False, media_dat
                             message_id=msg_id
                         )
                         context.user_data['temp_message_ids'].append(forwarded.message_id)
+                        # Small delay to maintain grouping
+                        await asyncio.sleep(0.05)  # 50ms between messages
                     except Exception as e:
                         logger.error(f"Failed to forward message {msg_id}: {e}")
             else:
