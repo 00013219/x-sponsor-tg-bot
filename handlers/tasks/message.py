@@ -368,6 +368,7 @@ async def save_single_task_message(update: Update, context: ContextTypes.DEFAULT
 async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
     """
     Job that runs after a short delay to process a buffered media group.
+    FIXED: Now saves message_ids array for proper repost forwarding.
     """
     job = context.job
     job_data = job.data
@@ -407,8 +408,12 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
     # Extract Media Data & Caption
     caption = ""
     media_list = []
+    message_ids = []  # ✅ NEW: Store all message IDs
 
     for msg in messages:
+        # ✅ NEW: Collect all message IDs for forwarding
+        message_ids.append(msg.message_id)
+
         # Capture caption from the first message that has one
         if msg.caption and not caption:
             caption = msg.caption
@@ -451,11 +456,12 @@ async def process_media_group(context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data['temp_message_ids'].append(warning_msg.message_id)
 
-    # Always save file IDs, even for reposts
+    # ✅ FIXED: Always save both file IDs AND message IDs
     media_group_data = {
         'caption': caption,
         'files': media_list,
-        'is_repost': is_forward  # Store whether it's a repost
+        'message_ids': message_ids,  # ✅ NEW: Required for repost forwarding
+        'is_repost': is_forward
     }
 
     # Generate Snippet
