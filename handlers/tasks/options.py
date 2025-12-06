@@ -416,13 +416,41 @@ async def task_set_post_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 caption = media_group_data.get('caption', '')
                 if caption and len(caption) > MAX_MEDIA_CAPTION_LENGTH:
                     await query.answer(
-                        get_text('error_repost_caption_too_long_alert', context).format(
-                            max_length=MAX_MEDIA_CAPTION_LENGTH,
-                            current_length=len(caption)
-                        ),
+                        get_text('error_mediagroup_caption_limit_alert', context),
                         show_alert=True
                     )
                     return TASK_CONSTRUCTOR
+        else:
+            # For single messages, try a test copy to check if caption is too long
+            content_chat_id = task.get('content_chat_id')
+            content_message_id = task.get('content_message_id')
+
+            if content_chat_id and content_message_id:
+                try:
+                    # Try to copy the message - this will fail if caption is too long
+                    # We use a dummy copy to a non-existent chat or the user's own chat
+                    user_id = context.user_data.get('user_id')
+                    test_msg = await context.bot.copy_message(
+                        chat_id=user_id,
+                        from_chat_id=content_chat_id,
+                        message_id=content_message_id
+                    )
+                    # Delete the test message if it succeeded
+                    try:
+                        await context.bot.delete_message(chat_id=user_id, message_id=test_msg.message_id)
+                    except Exception:
+                        pass
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if 'caption' in error_str and 'long' in error_str:
+                        await query.answer(
+                            get_text('error_single_media_caption_limit_alert', context),
+                            show_alert=True
+                        )
+                        return TASK_CONSTRUCTOR
+                    # Other errors - log and continue (might be permission issues etc.)
+                    from utils.logging import logger
+                    logger.warning(f"Test copy failed for task {task_id}: {e}")
 
     # Update the post type
     await update_task_field(task_id, 'post_type', new_value, context)
