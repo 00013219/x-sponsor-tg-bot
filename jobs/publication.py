@@ -243,46 +243,60 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                 sig_row = db_query("SELECT signature FROM bot_settings WHERE id = 1", fetchone=True)
                 if sig_row and sig_row.get('signature'):
                     signature = f"\n\n{sig_row['signature']}"
+                    signature_len = len(signature)
+                    
                     try:
                         # For media groups, apply signature to first message caption
                         if media_group_json and all_posted_ids:
                             media_data = media_group_json if isinstance(media_group_json, dict) else json.loads(media_group_json)
                             original_caption = media_data.get('caption', '') or ''
-                            new_caption = (original_caption + signature)[:1024]
-                            try:
-                                await bot.edit_message_caption(
-                                    chat_id=channel_id,
-                                    message_id=posted_message_id,
-                                    caption=new_caption,
-                                    parse_mode=ParseMode.HTML
-                                )
-                                logger.info(f"✅ Signature applied to media group caption for job {job_id}")
-                            except Exception as e:
-                                logger.warning(f"Could not apply signature to media group: {e}")
+                            # Check if signature fits (caption limit: 1024)
+                            if len(original_caption) + signature_len + 1 <= 1024:
+                                new_caption = original_caption + signature
+                                try:
+                                    await bot.edit_message_caption(
+                                        chat_id=channel_id,
+                                        message_id=posted_message_id,
+                                        caption=new_caption,
+                                        parse_mode=ParseMode.HTML
+                                    )
+                                    logger.info(f"✅ Signature applied to media group caption for job {job_id}")
+                                except Exception as e:
+                                    logger.warning(f"Could not apply signature to media group: {e}")
+                            else:
+                                logger.info(f"⏭️ Signature skipped for job {job_id}: caption too long ({len(original_caption)}/{1024 - signature_len - 1})")
                         
                         # For single messages from copy_message
                         elif isinstance(sent_msg_object, Message):
                             # sent_msg_object is a real Message (from forward or send_media_group)
                             if sent_msg_object.text:
-                                new_text = (sent_msg_object.text + signature)[:4096]
-                                await bot.edit_message_text(
-                                    chat_id=channel_id,
-                                    message_id=posted_message_id,
-                                    text=new_text,
-                                    parse_mode=ParseMode.HTML,
-                                    disable_web_page_preview=True
-                                )
-                                logger.info(f"✅ Signature applied to text message for job {job_id}")
+                                # Check if signature fits (text limit: 4096)
+                                if len(sent_msg_object.text) + signature_len + 1 <= 4096:
+                                    new_text = sent_msg_object.text + signature
+                                    await bot.edit_message_text(
+                                        chat_id=channel_id,
+                                        message_id=posted_message_id,
+                                        text=new_text,
+                                        parse_mode=ParseMode.HTML,
+                                        disable_web_page_preview=True
+                                    )
+                                    logger.info(f"✅ Signature applied to text message for job {job_id}")
+                                else:
+                                    logger.info(f"⏭️ Signature skipped for job {job_id}: text too long ({len(sent_msg_object.text)}/{4096 - signature_len - 1})")
                             elif sent_msg_object.caption is not None:
                                 current_caption = sent_msg_object.caption or ""
-                                new_caption = (current_caption + signature)[:1024]
-                                await bot.edit_message_caption(
-                                    chat_id=channel_id,
-                                    message_id=posted_message_id,
-                                    caption=new_caption,
-                                    parse_mode=ParseMode.HTML,
-                                )
-                                logger.info(f"✅ Signature applied to caption for job {job_id}")
+                                # Check if signature fits (caption limit: 1024)
+                                if len(current_caption) + signature_len + 1 <= 1024:
+                                    new_caption = current_caption + signature
+                                    await bot.edit_message_caption(
+                                        chat_id=channel_id,
+                                        message_id=posted_message_id,
+                                        caption=new_caption,
+                                        parse_mode=ParseMode.HTML,
+                                    )
+                                    logger.info(f"✅ Signature applied to caption for job {job_id}")
+                                else:
+                                    logger.info(f"⏭️ Signature skipped for job {job_id}: caption too long ({len(current_caption)}/{1024 - signature_len - 1})")
                         else:
                             # copy_message returns MessageId, not Message
                             # We need to fetch the original content to determine what to edit
@@ -306,24 +320,32 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                                         if update.channel_post and update.channel_post.message_id == posted_message_id:
                                             msg = update.channel_post
                                             if msg.text:
-                                                new_text = (msg.text + signature)[:4096]
-                                                await bot.edit_message_text(
-                                                    chat_id=channel_id,
-                                                    message_id=posted_message_id,
-                                                    text=new_text,
-                                                    parse_mode=ParseMode.HTML,
-                                                    disable_web_page_preview=True
-                                                )
-                                                logger.info(f"✅ Signature applied via getUpdates for job {job_id}")
+                                                # Check if signature fits
+                                                if len(msg.text) + signature_len + 1 <= 4096:
+                                                    new_text = msg.text + signature
+                                                    await bot.edit_message_text(
+                                                        chat_id=channel_id,
+                                                        message_id=posted_message_id,
+                                                        text=new_text,
+                                                        parse_mode=ParseMode.HTML,
+                                                        disable_web_page_preview=True
+                                                    )
+                                                    logger.info(f"✅ Signature applied via getUpdates for job {job_id}")
+                                                else:
+                                                    logger.info(f"⏭️ Signature skipped for job {job_id}: text too long")
                                             elif msg.caption is not None:
-                                                new_caption = ((msg.caption or "") + signature)[:1024]
-                                                await bot.edit_message_caption(
-                                                    chat_id=channel_id,
-                                                    message_id=posted_message_id,
-                                                    caption=new_caption,
-                                                    parse_mode=ParseMode.HTML,
-                                                )
-                                                logger.info(f"✅ Signature applied to caption via getUpdates for job {job_id}")
+                                                # Check if signature fits
+                                                if len(msg.caption or "") + signature_len + 1 <= 1024:
+                                                    new_caption = (msg.caption or "") + signature
+                                                    await bot.edit_message_caption(
+                                                        chat_id=channel_id,
+                                                        message_id=posted_message_id,
+                                                        caption=new_caption,
+                                                        parse_mode=ParseMode.HTML,
+                                                    )
+                                                    logger.info(f"✅ Signature applied to caption via getUpdates for job {job_id}")
+                                                else:
+                                                    logger.info(f"⏭️ Signature skipped for job {job_id}: caption too long")
                                             break
                                 except Exception as e2:
                                     logger.warning(f"Signature fallback failed: {e2}")
