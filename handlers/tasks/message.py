@@ -206,12 +206,42 @@ async def task_ask_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     context.user_data['temp_message_ids'] = []
                 context.user_data['temp_message_ids'].append(copied_message.message_id)
             except Exception as e:
-                logger.warning(f"Failed to copy old message for task {task_id}: {e}")
-                error_msg = await context.bot.send_message(
-                    chat_id=query.message.chat_id,
-                    text=get_text('task_message_display_error', context)
-                )
-                context.user_data.setdefault('temp_message_ids', []).append(error_msg.message_id)
+                error_str = str(e).lower()
+                # If caption too long, fallback to forward + separate buttons for preview
+                if 'caption' in error_str and 'long' in error_str:
+                    logger.warning(f"copy_message failed due to long caption, using forward for preview")
+                    try:
+                        # Forward the message (shows "Forwarded from" but at least works)
+                        forwarded_msg = await context.bot.forward_message(
+                            chat_id=query.message.chat_id,
+                            from_chat_id=task['content_chat_id'],
+                            message_id=task['content_message_id']
+                        )
+                        if 'temp_message_ids' not in context.user_data:
+                            context.user_data['temp_message_ids'] = []
+                        context.user_data['temp_message_ids'].append(forwarded_msg.message_id)
+                        
+                        # Send separate control message
+                        control_msg = await context.bot.send_message(
+                            chat_id=query.message.chat_id,
+                            text=get_text('task_message_current_prompt', context),
+                            reply_markup=InlineKeyboardMarkup(keyboard)
+                        )
+                        context.user_data['temp_message_ids'].append(control_msg.message_id)
+                    except Exception as e2:
+                        logger.error(f"Forward fallback also failed for task {task_id}: {e2}")
+                        error_msg = await context.bot.send_message(
+                            chat_id=query.message.chat_id,
+                            text=get_text('task_message_display_error', context)
+                        )
+                        context.user_data.setdefault('temp_message_ids', []).append(error_msg.message_id)
+                else:
+                    logger.warning(f"Failed to copy old message for task {task_id}: {e}")
+                    error_msg = await context.bot.send_message(
+                        chat_id=query.message.chat_id,
+                        text=get_text('task_message_display_error', context)
+                    )
+                    context.user_data.setdefault('temp_message_ids', []).append(error_msg.message_id)
 
         return TASK_SET_MESSAGE
     else:
