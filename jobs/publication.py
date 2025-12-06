@@ -299,56 +299,70 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
                                     logger.info(f"⏭️ Signature skipped for job {job_id}: caption too long ({len(current_caption)}/{1024 - signature_len - 1})")
                         else:
                             # copy_message returns MessageId, not Message
-                            # We need to fetch the original content to determine what to edit
-                            # Try to get original message from the bot's chat (source)
+                            # We need to fetch the message via getUpdates to get current content
                             try:
-                                # First try to edit as caption (for media messages)
-                                await bot.edit_message_caption(
-                                    chat_id=channel_id,
-                                    message_id=posted_message_id,
-                                    caption=signature.strip(),
-                                    parse_mode=ParseMode.HTML,
-                                )
-                                logger.info(f"✅ Signature applied as caption for copied message job {job_id}")
-                            except Exception:
-                                # If that fails, try to get the message via getUpdates and edit text
-                                try:
-                                    # Try to edit as text (for text-only messages)
-                                    # We need to get the current text first - use getChat/getUpdates workaround
-                                    updates = await bot.get_updates(timeout=1)
-                                    for update in updates:
-                                        if update.channel_post and update.channel_post.message_id == posted_message_id:
-                                            msg = update.channel_post
-                                            if msg.text:
-                                                # Check if signature fits
-                                                if len(msg.text) + signature_len + 1 <= 4096:
-                                                    new_text = msg.text + signature
-                                                    await bot.edit_message_text(
-                                                        chat_id=channel_id,
-                                                        message_id=posted_message_id,
-                                                        text=new_text,
-                                                        parse_mode=ParseMode.HTML,
-                                                        disable_web_page_preview=True
-                                                    )
-                                                    logger.info(f"✅ Signature applied via getUpdates for job {job_id}")
-                                                else:
-                                                    logger.info(f"⏭️ Signature skipped for job {job_id}: text too long")
-                                            elif msg.caption is not None:
-                                                # Check if signature fits
-                                                if len(msg.caption or "") + signature_len + 1 <= 1024:
-                                                    new_caption = (msg.caption or "") + signature
-                                                    await bot.edit_message_caption(
-                                                        chat_id=channel_id,
-                                                        message_id=posted_message_id,
-                                                        caption=new_caption,
-                                                        parse_mode=ParseMode.HTML,
-                                                    )
-                                                    logger.info(f"✅ Signature applied to caption via getUpdates for job {job_id}")
-                                                else:
-                                                    logger.info(f"⏭️ Signature skipped for job {job_id}: caption too long")
-                                            break
-                                except Exception as e2:
-                                    logger.warning(f"Signature fallback failed: {e2}")
+                                updates = await bot.get_updates(timeout=1)
+                                msg_found = False
+                                for update in updates:
+                                    if update.channel_post and update.channel_post.message_id == posted_message_id:
+                                        msg = update.channel_post
+                                        msg_found = True
+                                        if msg.text:
+                                            # Check if signature fits
+                                            if len(msg.text) + signature_len + 1 <= 4096:
+                                                new_text = msg.text + signature
+                                                await bot.edit_message_text(
+                                                    chat_id=channel_id,
+                                                    message_id=posted_message_id,
+                                                    text=new_text,
+                                                    parse_mode=ParseMode.HTML,
+                                                    disable_web_page_preview=True
+                                                )
+                                                logger.info(f"✅ Signature applied to text via getUpdates for job {job_id}")
+                                            else:
+                                                logger.info(f"⏭️ Signature skipped for job {job_id}: text too long")
+                                        elif msg.caption is not None:
+                                            current_caption = msg.caption or ""
+                                            # Check if signature fits
+                                            if len(current_caption) + signature_len + 1 <= 1024:
+                                                new_caption = current_caption + signature
+                                                await bot.edit_message_caption(
+                                                    chat_id=channel_id,
+                                                    message_id=posted_message_id,
+                                                    caption=new_caption,
+                                                    parse_mode=ParseMode.HTML,
+                                                )
+                                                logger.info(f"✅ Signature applied to caption via getUpdates for job {job_id}")
+                                            else:
+                                                logger.info(f"⏭️ Signature skipped for job {job_id}: caption too long ({len(current_caption)}/{1024 - signature_len - 1})")
+                                        else:
+                                            # Message has no text or caption, try adding signature as new caption
+                                            try:
+                                                await bot.edit_message_caption(
+                                                    chat_id=channel_id,
+                                                    message_id=posted_message_id,
+                                                    caption=signature.strip(),
+                                                    parse_mode=ParseMode.HTML,
+                                                )
+                                                logger.info(f"✅ Signature applied as new caption for job {job_id}")
+                                            except Exception:
+                                                logger.info(f"⏭️ Could not add signature to message without caption for job {job_id}")
+                                        break
+                                
+                                if not msg_found:
+                                    # Message not found in updates, try to add signature as caption
+                                    try:
+                                        await bot.edit_message_caption(
+                                            chat_id=channel_id,
+                                            message_id=posted_message_id,
+                                            caption=signature.strip(),
+                                            parse_mode=ParseMode.HTML,
+                                        )
+                                        logger.info(f"✅ Signature applied as caption for copied message job {job_id}")
+                                    except Exception:
+                                        logger.info(f"⏭️ Could not apply signature to copied message job {job_id}")
+                            except Exception as e2:
+                                logger.warning(f"Signature fallback failed: {e2}")
                     except Exception as e:
                         logger.warning(f"⚠️ Could not apply signature to job {job_id}: {e}")
 
