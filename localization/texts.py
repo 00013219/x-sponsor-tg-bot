@@ -58,6 +58,10 @@ TEXTS = {
         'duration_no': "❌ Нет",
         'duration_ask_pin': "📌 Выберите длительность закрепления:",
         'duration_ask_delete': "🧹 Выберите длительность автоудаления:",
+        'duration_ask_custom': "⏳ Введите длительность:\n\nПримеры формата:\n• `30m` = 30 минут\n• `12h` = 12 часов\n• `3d` = 3 дня",
+        'duration_invalid_format': "⚠️ Неверный формат. Примеры: '5m', '30m', '1h', '1d'",
+        'duration_pin_set': "✅ Закрепление: {duration}",
+        'duration_autodelete_set': "✅ Автоудаление: {duration}",
 
         # --- Статусы и сообщения ---
         'status_set': "✅ Задано",
@@ -460,6 +464,10 @@ Let's get started! Please select your language:""",
         'duration_no': "❌ No",
         'duration_ask_pin': "📌 Select pin duration:",
         'duration_ask_delete': "🧹 Select auto-delete duration:",
+        'duration_ask_custom': "⏳ Enter duration:\n\nFormat examples:\n• `30m` = 30 minutes\n• `12h` = 12 hours\n• `3d` = 3 days",
+        'duration_invalid_format': "⚠️ Invalid format. Try: '5m', '30m', '1h', '1d'",
+        'duration_pin_set': "✅ Pin set to: {duration}",
+        'duration_autodelete_set': "✅ Auto-delete set to: {duration}",
 
         # --- Statuses and Messages ---
         'status_set': "✅ Set",
@@ -862,6 +870,10 @@ Mi objetivo es hacer que tu colaboración con los anunciantes sea lo más eficie
         'duration_no': "❌ No",
         'duration_ask_pin': "📌 Selecciona la duración del anclaje:",
         'duration_ask_delete': "🧹 Selecciona la duración de la eliminación automática:",
+        'duration_ask_custom': "⏳ Introduce la duración:\n\nEjemplos de formato:\n• `30m` = 30 minutos\n• `12h` = 12 horas\n• `3d` = 3 días",
+        'duration_invalid_format': "⚠️ Formato inválido. Prueba: '5m', '30m', '1h', '1d'",
+        'duration_pin_set': "✅ Anclaje fijado: {duration}",
+        'duration_autodelete_set': "✅ Eliminación automática: {duration}",
 
         # --- Statuses and Messages ---
         'status_set': "✅ Establecido",
@@ -1257,6 +1269,10 @@ Commençons! Veuillez sélectionner votre langue:""",
         'duration_no': "❌ Non",
         'duration_ask_pin': "📌 Sélectionnez la durée d'épinglage:",
         'duration_ask_delete': "🧹 Sélectionnez la durée de suppression automatique:",
+        'duration_ask_custom': "⏳ Entrez la durée:\n\nExemples de format:\n• `30m` = 30 minutes\n• `12h` = 12 heures\n• `3d` = 3 jours",
+        'duration_invalid_format': "⚠️ Format invalide. Essayez: '5m', '30m', '1h', '1d'",
+        'duration_pin_set': "✅ Épinglage: {duration}",
+        'duration_autodelete_set': "✅ Suppression auto: {duration}",
 
         # --- Statuses and Messages ---
         'status_set': "✅ Défini",
@@ -1652,6 +1668,10 @@ Confirmer ?
         'duration_no': "❌ Ні",
         'duration_ask_pin': "📌 Оберіть тривалість закріплення:",
         'duration_ask_delete': "🧹 Оберіть тривалість автовидалення:",
+        'duration_ask_custom': "⏳ Введіть тривалість:\n\nПриклади формату:\n• `30m` = 30 хвилин\n• `12h` = 12 годин\n• `3d` = 3 дні",
+        'duration_invalid_format': "⚠️ Невірний формат. Приклади: '5m', '30m', '1h', '1d'",
+        'duration_pin_set': "✅ Закріплення: {duration}",
+        'duration_autodelete_set': "✅ Автовидалення: {duration}",
 
         # --- Статуси та повідомлення ---
         'status_set': "✅ Задано",
@@ -2047,6 +2067,10 @@ Lassen Sie uns beginnen! Bitte wählen Sie Ihre Sprache:""",
         'duration_no': "❌ Nein",
         'duration_ask_pin': "📌 Wähle die Dauer des Anheftens:",
         'duration_ask_delete': "🧹 Wähle die Dauer der Auto-Löschung:",
+        'duration_ask_custom': "⏳ Dauer eingeben:\n\nFormat-Beispiele:\n• `30m` = 30 Minuten\n• `12h` = 12 Stunden\n• `3d` = 3 Tage",
+        'duration_invalid_format': "⚠️ Ungültiges Format. Versuche: '5m', '30m', '1h', '1d'",
+        'duration_pin_set': "✅ Anheftung: {duration}",
+        'duration_autodelete_set': "✅ Auto-Löschung: {duration}",
 
         # --- Statuses and Messages ---
         'status_set': "✅ Festgelegt",

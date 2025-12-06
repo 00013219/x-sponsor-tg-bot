@@ -224,15 +224,34 @@ async def execute_publication_job(context: ContextTypes.DEFAULT_TYPE):
 
             # LOGIC C: Single Message Copy (From Bot)
             else:
-                sent_msg = await bot.copy_message(
-                    chat_id=channel_id,
-                    from_chat_id=content_chat_id,
-                    message_id=content_message_id,
-                    disable_notification=api_disable_notification
-                )
-                posted_message_id = sent_msg.message_id
-                all_posted_ids = [posted_message_id]
-                sent_msg_object = sent_msg
+                try:
+                    sent_msg = await bot.copy_message(
+                        chat_id=channel_id,
+                        from_chat_id=content_chat_id,
+                        message_id=content_message_id,
+                        disable_notification=api_disable_notification
+                    )
+                    posted_message_id = sent_msg.message_id
+                    all_posted_ids = [posted_message_id]
+                    sent_msg_object = sent_msg
+                except Exception as copy_error:
+                    error_str = str(copy_error).lower()
+                    # If caption too long for copy_message, fallback to forward
+                    if 'caption' in error_str and 'long' in error_str:
+                        logger.warning(f"copy_message failed due to long caption, using forward_message fallback")
+                        sent_msg = await bot.forward_message(
+                            chat_id=channel_id,
+                            from_chat_id=content_chat_id,
+                            message_id=content_message_id,
+                            disable_notification=api_disable_notification
+                        )
+                        posted_message_id = sent_msg.message_id
+                        all_posted_ids = [posted_message_id]
+                        sent_msg_object = sent_msg
+                        # Mark as repost since we're forwarding
+                        is_repost = True
+                    else:
+                        raise copy_error
 
         logger.info(f"✅ Published successfully. Main Msg ID: {posted_message_id}, Total Msgs: {len(all_posted_ids)}")
 

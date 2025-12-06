@@ -79,13 +79,7 @@ async def pin_custom(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     # Updated Text with Instructions
-    text = (
-        f"{get_text('duration_ask_custom', context) or '⏳ Enter duration:'}\n\n"
-        "Format examples:\n"
-        "• `30m` = 30 minutes\n"
-        "• `12h` = 12 hours\n"
-        "• `3d` = 3 days"
-    )
+    text = get_text('duration_ask_custom', context)
 
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(get_text('back_btn', context), callback_data="task_set_pin")]
@@ -103,7 +97,7 @@ async def pin_receive_custom(update: Update, context: ContextTypes.DEFAULT_TYPE)
     hours = parse_human_duration(text_input)
 
     if hours is None:
-        msg = await update.message.reply_text("⚠️ Invalid format. Try: '5m', '30m', '1h', '1d'")
+        msg = await update.message.reply_text(get_text('duration_invalid_format', context))
         asyncio.create_task(delete_message_after_delay(context, update.message.chat_id, msg.message_id, 3))
         return TASK_SET_PIN_CUSTOM
 
@@ -122,7 +116,10 @@ async def pin_receive_custom(update: Update, context: ContextTypes.DEFAULT_TYPE)
     else:
         display_time = f"{hours:.1f}h".replace(".0h", "h")
 
-    msg = await context.bot.send_message(update.effective_chat.id, f"✅ Pin set to {display_time}")
+    msg = await context.bot.send_message(
+        update.effective_chat.id, 
+        get_text('duration_pin_set', context).format(duration=display_time)
+    )
     asyncio.create_task(delete_message_after_delay(context, update.message.chat_id, msg.message_id, 2))
 
     return await show_task_constructor(update, context)
@@ -188,13 +185,7 @@ async def delete_custom(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     # Updated Text with Instructions
-    text = (
-        f"{get_text('duration_ask_custom', context) or '⏳ Enter duration:'}\n\n"
-        "Format examples:\n"
-        "• `45m` = 45 minutes\n"
-        "• `24h` = 24 hours\n"
-        "• `2d` = 2 days"
-    )
+    text = get_text('duration_ask_custom', context)
 
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(get_text('back_btn', context), callback_data="task_set_delete")]
@@ -212,7 +203,7 @@ async def delete_receive_custom(update: Update, context: ContextTypes.DEFAULT_TY
     hours = parse_human_duration(text_input)
 
     if hours is None:
-        msg = await update.message.reply_text("⚠️ Invalid format. Try: '10m', '2h', '1d'")
+        msg = await update.message.reply_text(get_text('duration_invalid_format', context))
         asyncio.create_task(delete_message_after_delay(context, update.message.chat_id, msg.message_id, 3))
         return TASK_SET_DELETE_CUSTOM
 
@@ -229,7 +220,10 @@ async def delete_receive_custom(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         display_time = f"{hours:.1f}h".replace(".0h", "h")
 
-    msg = await context.bot.send_message(update.effective_chat.id, f"✅ Auto-delete set to {display_time}")
+    msg = await context.bot.send_message(
+        update.effective_chat.id, 
+        get_text('duration_autodelete_set', context).format(duration=display_time)
+    )
     asyncio.create_task(delete_message_after_delay(context, update.message.chat_id, msg.message_id, 2))
 
     return await show_task_constructor(update, context)
@@ -420,37 +414,8 @@ async def task_set_post_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         show_alert=True
                     )
                     return TASK_CONSTRUCTOR
-        else:
-            # For single messages, try a test copy to check if caption is too long
-            content_chat_id = task.get('content_chat_id')
-            content_message_id = task.get('content_message_id')
-
-            if content_chat_id and content_message_id:
-                try:
-                    # Try to copy the message - this will fail if caption is too long
-                    # We use a dummy copy to a non-existent chat or the user's own chat
-                    user_id = context.user_data.get('user_id')
-                    test_msg = await context.bot.copy_message(
-                        chat_id=user_id,
-                        from_chat_id=content_chat_id,
-                        message_id=content_message_id
-                    )
-                    # Delete the test message if it succeeded
-                    try:
-                        await context.bot.delete_message(chat_id=user_id, message_id=test_msg.message_id)
-                    except Exception:
-                        pass
-                except Exception as e:
-                    error_str = str(e).lower()
-                    if 'caption' in error_str and 'long' in error_str:
-                        await query.answer(
-                            get_text('error_single_media_caption_limit_alert', context),
-                            show_alert=True
-                        )
-                        return TASK_CONSTRUCTOR
-                    # Other errors - log and continue (might be permission issues etc.)
-                    from utils.logging import logger
-                    logger.warning(f"Test copy failed for task {task_id}: {e}")
+        # Note: Single media messages (one photo/video) support up to 4096 chars caption
+        # so no validation needed for them - only media groups are limited to 1024
 
     # Update the post type
     await update_task_field(task_id, 'post_type', new_value, context)
